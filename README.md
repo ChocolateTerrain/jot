@@ -2,7 +2,7 @@
 
 Handwrite annotations on PDFs in Obsidian with your Apple Pencil. Strokes are stored in a tiny JSON sidecar (`<file>.jot.json`) next to the original file — the original PDF is never modified — so annotations sync via Git or iCloud alongside the rest of your vault.
 
-I built this to annotate musical scores during rehearsal with our vocal band: things like breath marks, "watch out for thise note", etc. 
+I built this to annotate musical scores during rehearsal with our vocal band: things like breath marks, "watch out for thise note", etc.
 
 Status: **early, working**. PDFs only for now.
 
@@ -25,7 +25,7 @@ Status: **early, working**. PDFs only for now.
 
 ## Installing
 
-1. In Obsidian, open *Settings → Community plugins → Browse*.
+1. In Obsidian, open _Settings → Community plugins → Browse_.
 2. Search for **Jot**, install, and enable it.
 
 ### Beta builds
@@ -40,7 +40,7 @@ To try unreleased changes, install [BRAT](https://github.com/TfTHacker/obsidian4
 4. Two-finger hold dismisses the palette. The palette also auto-dismisses after a brief confirmation animation when you pick a color.
 5. Run the **Merge notes into PDF** command to bake annotations into a flattened PDF. Run **Clear annotations on this PDF** to wipe all strokes (undoable).
 
-Set your handedness, the pen hold duration, and the seven palette colors under *Settings → Jot*. If the palette opens while you write, raise the hold duration or turn off **Open palette with pen hold** to use only the two-finger hold.
+Set your handedness, the pen hold duration, and the seven palette colors under _Settings → Jot_. If the palette opens while you write, raise the hold duration or turn off **Open palette with pen hold** to use only the two-finger hold.
 
 ## Development
 
@@ -56,5 +56,5 @@ Open `dev-vault/` as a vault in Obsidian to test. The dev vault is gitignored an
 ### Testing on iPad
 
 1. Cut a beta release (`npm version prerelease` then `git push origin main --follow-tags` — the release workflow uploads `main.js`, `manifest.json`, and `styles.css`).
-2. On the iPad, install **BRAT** into a *separate dev vault* — never your real one.
+2. On the iPad, install **BRAT** into a _separate dev vault_ — never your real one.
 3. In BRAT, add this repo as a beta plugin. BRAT pulls the release and installs it.
