@@ -9,6 +9,103 @@
 	position: relative;
 }
 
+.jot-docked-toolbar {
+	position: fixed;
+	left: 50%;
+	bottom: max(10px, env(safe-area-inset-bottom));
+	transform: translateX(-50%);
+	max-width: calc(100vw - 20px);
+	z-index: 10001;
+	pointer-events: none;
+	user-select: none;
+}
+
+.jot-docked-toolbar-controls {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	max-width: calc(100vw - 20px);
+	padding: 7px 9px;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	border: 1px solid var(--background-modifier-border, #555);
+	border-radius: 12px;
+	background: var(--background-secondary, #30343b);
+	box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3);
+	backdrop-filter: blur(12px);
+	pointer-events: auto;
+	touch-action: pan-x;
+}
+
+.jot-dock-button {
+	width: 42px;
+	height: 42px;
+	flex: 0 0 42px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--text-normal, #eee);
+	-webkit-appearance: none;
+	appearance: none;
+	touch-action: manipulation;
+}
+
+.jot-dock-button svg {
+	width: 22px;
+	height: 22px;
+}
+
+.jot-dock-button.is-active {
+	background: var(--background-modifier-hover, rgba(255, 255, 255, 0.12));
+	box-shadow: inset 0 0 0 2px var(--interactive-accent, #3688ff);
+}
+
+.jot-dock-button:disabled {
+	opacity: 0.35;
+}
+
+.jot-dock-separator {
+	width: 1px;
+	height: 28px;
+	flex: 0 0 1px;
+	background: var(--background-modifier-border, #666);
+}
+
+.jot-dock-width-dot {
+	display: block;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+.jot-dock-color {
+	width: 34px;
+	height: 34px;
+	flex-basis: 34px;
+	border-radius: 50%;
+	border: 2px solid rgba(0, 0, 0, 0.25);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.jot-dock-color.is-active {
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.35),
+		0 0 0 2px var(--interactive-accent, #3688ff);
+}
+
+@media (max-width: 700px) {
+	.jot-docked-toolbar {
+		bottom: max(6px, env(safe-area-inset-bottom));
+	}
+	.jot-docked-toolbar-controls {
+		gap: 4px;
+		padding: 5px 6px;
+	}
+}
+
 .jot-passthrough {
 	pointer-events: none;
 }

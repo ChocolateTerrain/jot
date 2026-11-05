@@ -1,5 +1,6 @@
 import { Notice, Plugin, TFile } from 'obsidian';
 import { DEFAULT_TOOL_STATE, Palette, ToolState } from './palette';
+import { DockedToolbar } from './docked-toolbar';
 import { DEFAULT_SETTINGS, JotSettings, JotSettingTab } from './settings';
 import { clampPenHoldMs } from './pen-hold';
 import { ConfirmClearModal } from './clear';
@@ -24,6 +25,7 @@ export default class JotPlugin extends Plugin {
 	private overlays!: OverlayManager;
 	private toolState: ToolState = { ...DEFAULT_TOOL_STATE };
 	private palette!: Palette;
+	private dockedToolbar: DockedToolbar | null = null;
 	settings: JotSettings = { ...DEFAULT_SETTINGS };
 	private history = new UndoHistory();
 	private undoController!: UndoController;
@@ -36,7 +38,10 @@ export default class JotPlugin extends Plugin {
 		);
 		this.undoController = new UndoController(this.history, this.strokes, this.overlays, {
 			activePdfPath: () => this.overlays.getActivePdfFilePath(),
-			onAfterApply: (pdfPath) => this.scheduleSave(pdfPath),
+			onAfterApply: (pdfPath) => {
+				this.scheduleSave(pdfPath);
+				this.dockedToolbar?.refresh();
+			},
 		});
 		this.merge = new MergeService(
 			this.app,
@@ -80,6 +85,7 @@ export default class JotPlugin extends Plugin {
 				this.settings.penState = mem.pen;
 				this.settings.highlighterState = mem.highlighter;
 				void this.saveSettings();
+				this.dockedToolbar?.refresh();
 			},
 			{
 				onUndo: () => this.undoController.undo(),
@@ -93,12 +99,25 @@ export default class JotPlugin extends Plugin {
 				highlighter: this.settings.highlighterState,
 			},
 		);
+		this.dockedToolbar = new DockedToolbar(this.palette, {
+			onUndo: () => this.undoController.undo(),
+			onRedo: () => this.undoController.redo(),
+			canUndo: () => this.undoController.canUndo(),
+			canRedo: () => this.undoController.canRedo(),
+			getColors: () => this.settings.colors,
+		});
 
 		this.registerEvent(
 			this.app.workspace.on('file-open', async (file: TFile | null) => {
-				if (file?.extension !== 'pdf') return;
+				if (file?.extension !== 'pdf') {
+					this.dockedToolbar?.hide();
+					return;
+				}
 				await this.ensureLoaded(file.path);
-				window.setTimeout(() => this.overlays.attachToActivePdf(), 300);
+				window.setTimeout(() => {
+					this.overlays.attachToActivePdf();
+					this.syncDockedToolbar();
+				}, 300);
 			}),
 		);
 
@@ -106,6 +125,7 @@ export default class JotPlugin extends Plugin {
 			this.app.workspace.on('layout-change', () => {
 				this.overlays.pruneClosedObservers();
 				this.overlays.attachToActivePdf();
+				this.syncDockedToolbar();
 			}),
 		);
 
@@ -123,6 +143,7 @@ export default class JotPlugin extends Plugin {
 			if (!filePath) return;
 			await this.ensureLoaded(filePath);
 			this.overlays.attachToActivePdf();
+			this.syncDockedToolbar();
 		});
 	}
 
@@ -130,6 +151,15 @@ export default class JotPlugin extends Plugin {
 		this.overlays?.detachAll();
 		this.sidecar?.cancelAllPending();
 		this.palette?.hide();
+		this.dockedToolbar?.hide();
+	}
+
+	private syncDockedToolbar(): void {
+		if (this.overlays.getActivePdfFilePath()) {
+			this.dockedToolbar?.show(activeDocument.body);
+		} else {
+			this.dockedToolbar?.hide();
+		}
 	}
 
 	private async ensureLoaded(pdfPath: string) {
@@ -163,6 +193,7 @@ export default class JotPlugin extends Plugin {
 				enabled: this.settings.penHoldOpensPalette,
 				durationMs: this.settings.penHoldMs,
 			}),
+			onHistoryChange: () => this.dockedToolbar?.refresh(),
 		}).attach();
 	}
 
@@ -195,6 +226,7 @@ export default class JotPlugin extends Plugin {
 		}
 		this.scheduleSave(pdfPath);
 		this.overlays.redrawOverlaysForActivePdf();
+		this.dockedToolbar?.refresh();
 		new Notice(
 			`Jot: cleared ${totalStrokes} stroke${totalStrokes === 1 ? '' : 's'}. Undo to restore.`,
 		);

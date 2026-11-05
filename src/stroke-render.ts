@@ -80,12 +80,35 @@ export function drawHighlighterPolyline(
 	ctx.restore();
 }
 
+function drawPenPolyline(
+	ctx: CanvasRenderingContext2D,
+	points: NormalizedPoint[],
+	color: string,
+	baseWidth: number,
+	canvas: CanvasSize,
+) {
+	if (points.length < 2) return;
+	applyDprTransform(ctx, canvas);
+	const averagePressure =
+		points.reduce((total, point) => total + point.pressure, 0) / points.length;
+	ctx.lineWidth = baseWidth * widthFactorForPressure(averagePressure) * canvas.height;
+	ctx.strokeStyle = color;
+	ctx.lineCap = 'round';
+	ctx.lineJoin = 'round';
+	ctx.beginPath();
+	const head = denormalize(points[0]!, canvas);
+	ctx.moveTo(head.x, head.y);
+	forEachSmoothSegment(points, (_start, end) => {
+		const next = denormalize(end, canvas);
+		ctx.lineTo(next.x, next.y);
+	});
+	ctx.stroke();
+}
+
 export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, canvas: CanvasSize) {
 	if (stroke.tool === 'highlighter') {
 		drawHighlighterPolyline(ctx, stroke.points, stroke.color, stroke.width, canvas);
 		return;
 	}
-	forEachSmoothSegment(stroke.points, (a, b) => {
-		drawSegment(ctx, a, b, stroke.color, stroke.width, canvas);
-	});
+	drawPenPolyline(ctx, stroke.points, stroke.color, stroke.width, canvas);
 }

@@ -156,6 +156,30 @@ export class Palette {
 		return { ...this.state };
 	}
 
+	setTool(tool: Tool): void {
+		this.state.tool = tool;
+		const memory = this.memoryFor(tool);
+		if (memory) {
+			this.state.color = memory.color;
+			this.state.width = memory.width;
+		}
+		this.onChange(this.state);
+	}
+
+	setColor(color: string): void {
+		this.state.color = color;
+		const memory = this.memoryFor(this.state.tool);
+		if (memory) memory.color = color;
+		this.onChange(this.state);
+	}
+
+	setWidth(width: number): void {
+		this.state.width = width;
+		const memory = this.memoryFor(this.state.tool);
+		if (memory) memory.width = width;
+		this.onChange(this.state);
+	}
+
 	isOpen(): boolean {
 		return this.element !== null;
 	}
@@ -409,10 +433,7 @@ export class Palette {
 	}
 
 	private applyColor(color: string, btn: HTMLElement) {
-		this.state.color = color;
-		const memory = this.memoryFor(this.state.tool);
-		if (memory) memory.color = color;
-		this.onChange(this.state);
+		this.setColor(color);
 		this.confirmAndDismiss(btn);
 	}
 
@@ -429,13 +450,7 @@ export class Palette {
 	}
 
 	private applyTool(tool: Tool, btn: HTMLElement) {
-		this.state.tool = tool;
-		const memory = this.memoryFor(tool);
-		if (memory) {
-			this.state.color = memory.color;
-			this.state.width = memory.width;
-		}
-		this.onChange(this.state);
+		this.setTool(tool);
 		this.confirmAndDismiss(btn);
 	}
 
@@ -452,10 +467,7 @@ export class Palette {
 	}
 
 	private applyWidth(width: number, btn: HTMLElement) {
-		this.state.width = width;
-		const memory = this.memoryFor(this.state.tool);
-		if (memory) memory.width = width;
-		this.onChange(this.state);
+		this.setWidth(width);
 		this.confirmAndDismiss(btn);
 	}
 

@@ -13,7 +13,7 @@ import {
 	Stroke,
 	strokeIntersects,
 } from './stroke-math';
-import { drawHighlighterPolyline, drawSegment } from './stroke-render';
+import { drawStroke } from './stroke-render';
 import type { StrokeStore } from './stroke-store';
 import { StylusGestureGuard } from './stylus-gesture-guard';
 import { TwoFingerHoldDetector } from './two-finger-hold';
@@ -33,12 +33,13 @@ export interface PointerEventHandlerDeps {
 	toolState: () => ToolState;
 	handedness: () => Handedness;
 	penHold: () => PenHoldSettings;
+	onHistoryChange?: () => void;
 }
 
 export class PointerEventHandler {
 	private state = new PenStrokeState();
 	private activePointerId: number | null = null;
-	private highlighterFrame: number | null = null;
+	private drawingFrame: number | null = null;
 	private stylusTouchId: number | null = null;
 	private holdIndicator: HTMLElement | null = null;
 	private twoFingerIndicator: HTMLElement | null = null;
@@ -127,7 +128,7 @@ export class PointerEventHandler {
 		}
 		if (this.stylusTouchId !== null) return;
 		this.longPress.cancel();
-		this.cancelHighlighterRedraw();
+		this.cancelDrawingRedraw();
 		if (this.state.isErasing()) {
 			this.finalizeEraserGesture();
 			this.releasePointerCapture();
@@ -142,7 +143,7 @@ export class PointerEventHandler {
 
 	private onLongPressFire(): void {
 		this.removeHoldIndicator();
-		this.cancelHighlighterRedraw();
+		this.cancelDrawingRedraw();
 		const { clientX, clientY } = this.state.pressedAt;
 		this.state.reset();
 		this.deps.overlays.redrawPage(this.canvas);
@@ -184,43 +185,35 @@ export class PointerEventHandler {
 		if (!previous) return;
 		const next = this.toNormalized(clientX, clientY, pressure);
 		this.state.appendDrawingPoint(next);
-		const surface = readCanvasSurface(this.canvas);
-		const tool = this.deps.toolState();
-		if (tool.tool === 'highlighter') {
-			this.scheduleHighlighterRedraw();
-		} else {
-			drawSegment(this.ctx, previous, next, tool.color, tool.width, surface);
-		}
+		this.scheduleDrawingRedraw();
 	}
 
-	private scheduleHighlighterRedraw(): void {
-		if (this.highlighterFrame !== null) return;
-		this.highlighterFrame = window.requestAnimationFrame(() => {
-			this.highlighterFrame = null;
+	private scheduleDrawingRedraw(): void {
+		if (this.drawingFrame !== null) return;
+		this.drawingFrame = window.requestAnimationFrame(() => {
+			this.drawingFrame = null;
 			if (!this.state.isDrawing()) return;
 			const tool = this.deps.toolState();
-			if (tool.tool !== 'highlighter') return;
 			this.deps.overlays.redrawPage(this.canvas);
-			drawHighlighterPolyline(
+			drawStroke(
 				this.ctx,
-				this.state.drawingPoints(),
-				tool.color,
-				tool.width,
+				{ points: this.state.drawingPoints(), ...tool },
 				readCanvasSurface(this.canvas),
 			);
 		});
 	}
 
-	private cancelHighlighterRedraw(): void {
-		if (this.highlighterFrame === null) return;
-		window.cancelAnimationFrame(this.highlighterFrame);
-		this.highlighterFrame = null;
+	private cancelDrawingRedraw(): void {
+		if (this.drawingFrame === null) return;
+		window.cancelAnimationFrame(this.drawingFrame);
+		this.drawingFrame = null;
 	}
 
 	private finalizeEraserGesture(): void {
 		const snapshot = this.state.takeEraserSnapshot();
 		if (snapshot) this.deps.undo.push(snapshot);
 		this.state.reset();
+		this.deps.onHistoryChange?.();
 	}
 
 	private finalizeDrawingStroke(): void {
@@ -252,6 +245,7 @@ export class PointerEventHandler {
 			if (pdfPath) this.deps.sidecar.scheduleSave(pdfPath);
 		}
 		this.state.reset();
+		this.deps.onHistoryChange?.();
 	}
 
 	private eraseAt(clientX: number, clientY: number): boolean {
@@ -354,7 +348,7 @@ export class PointerEventHandler {
 		if (!touch) return;
 		this.stylusTouchId = null;
 		this.longPress.cancel();
-		this.cancelHighlighterRedraw();
+		this.cancelDrawingRedraw();
 		if (this.state.isErasing()) {
 			this.finalizeEraserGesture();
 		} else if (this.state.isDrawing()) {

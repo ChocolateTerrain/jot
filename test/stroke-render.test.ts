@@ -127,7 +127,7 @@ describe('drawHighlighterPolyline', () => {
 });
 
 describe('drawStroke', () => {
-	it('routes pen strokes through the segmented path with the dpr transform', () => {
+	it('draws a pen stroke as one connected path with the dpr transform', () => {
 		const ctx = makeCtx();
 		const stroke: Stroke = {
 			points: [point(0, 0), point(0.5, 0.5), point(1, 1)],
@@ -141,7 +141,9 @@ describe('drawStroke', () => {
 			dpr: 2,
 		});
 		expect(ctx.setTransform).toHaveBeenCalledWith(2, 0, 0, 2, 0, 0);
-		expect(ctx.stroke).toHaveBeenCalled();
+		expect(ctx.moveTo).toHaveBeenCalledOnce();
+		expect(ctx.stroke).toHaveBeenCalledOnce();
+		expect(ctx.lineCap).toBe('round');
 	});
 	it('routes highlighter strokes through the polyline path with the dpr transform', () => {
 		const ctx = makeCtx();
