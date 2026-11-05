@@ -225,6 +225,14 @@ export class OverlayManager {
 		return page.querySelector<HTMLElement>('.canvasWrapper') ?? page;
 	}
 
+	private pdfCanvasForPage(page: HTMLElement): HTMLCanvasElement | null {
+		return (
+			page.querySelector<HTMLCanvasElement>(
+				'.canvasWrapper canvas:not(.jot-overlay-canvas)',
+			) ?? page.querySelector<HTMLCanvasElement>('canvas:not(.jot-overlay-canvas)')
+		);
+	}
+
 	private observePageVisibility(page: HTMLElement): void {
 		if (typeof IntersectionObserver === 'undefined') {
 			this.visiblePages.add(page);
@@ -257,8 +265,16 @@ export class OverlayManager {
 	}
 
 	private sizeOverlayToPage(overlay: HTMLCanvasElement, page: HTMLElement): void {
-		const rect = this.overlayHostForPage(page).getBoundingClientRect();
+		const host = this.overlayHostForPage(page);
+		const hostRect = host.getBoundingClientRect();
+		const pdfCanvasRect = this.pdfCanvasForPage(page)?.getBoundingClientRect();
+		const rect =
+			pdfCanvasRect && pdfCanvasRect.width > 0 && pdfCanvasRect.height > 0
+				? pdfCanvasRect
+				: hostRect;
 		if (rect.width === 0 || rect.height === 0) return;
+		overlay.style.left = `${rect.left - hostRect.left}px`;
+		overlay.style.top = `${rect.top - hostRect.top}px`;
 		overlay.style.width = `${rect.width}px`;
 		overlay.style.height = `${rect.height}px`;
 		if (!this.visiblePages.has(page)) {

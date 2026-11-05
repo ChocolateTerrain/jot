@@ -145,12 +145,17 @@ describe('OverlayManager plugin reload', () => {
 		wrapper.className = 'canvasWrapper';
 		wrapper.getBoundingClientRect = () =>
 			({ left: 8, top: 36, width: 784, height: 928 }) as DOMRect;
+		const pdfCanvas = document.createElement('canvas');
+		pdfCanvas.getBoundingClientRect = () =>
+			({ left: 8, top: 48, width: 784, height: 928 }) as DOMRect;
+		wrapper.appendChild(pdfCanvas);
 		page.appendChild(wrapper);
 
 		new OverlayManager(appWith(leaf), new StrokeStore(), () => {}).attachToActivePdf();
 
 		const overlay = page.querySelector<HTMLCanvasElement>('canvas.jot-overlay-canvas')!;
 		expect(overlay.parentElement).toBe(wrapper);
+		expect(overlay.style.top).toBe('12px');
 		expect(overlay.style.width).toBe('784px');
 		expect(overlay.style.height).toBe('928px');
 	});
