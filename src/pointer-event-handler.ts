@@ -37,6 +37,7 @@ export interface PointerEventHandlerDeps {
 export class PointerEventHandler {
 	private state = new PenStrokeState();
 	private activePointerId: number | null = null;
+	private highlighterFrame: number | null = null;
 	private holdIndicator: HTMLElement | null = null;
 	private twoFingerIndicator: HTMLElement | null = null;
 	private stylusGuard = new StylusGestureGuard();
@@ -117,6 +118,7 @@ export class PointerEventHandler {
 			return;
 		}
 		this.longPress.cancel();
+		this.cancelHighlighterRedraw();
 		if (this.state.isErasing()) {
 			this.finalizeEraserGesture();
 			this.releasePointerCapture();
@@ -131,6 +133,7 @@ export class PointerEventHandler {
 
 	private onLongPressFire(): void {
 		this.removeHoldIndicator();
+		this.cancelHighlighterRedraw();
 		const { clientX, clientY } = this.state.pressedAt;
 		this.state.reset();
 		this.deps.overlays.redrawPage(this.canvas);
@@ -161,12 +164,35 @@ export class PointerEventHandler {
 		const surface = readCanvasSurface(this.canvas);
 		const tool = this.deps.toolState();
 		if (tool.tool === 'highlighter') {
-			this.deps.overlays.redrawPage(this.canvas);
-			drawHighlighterPolyline(this.ctx, this.state.drawingPoints(), tool.color, tool.width, surface);
+			this.scheduleHighlighterRedraw();
 		} else {
 			drawSegment(this.ctx, previous, next, tool.color, tool.width, surface);
 		}
 		e.preventDefault();
+	}
+
+	private scheduleHighlighterRedraw(): void {
+		if (this.highlighterFrame !== null) return;
+		this.highlighterFrame = window.requestAnimationFrame(() => {
+			this.highlighterFrame = null;
+			if (!this.state.isDrawing()) return;
+			const tool = this.deps.toolState();
+			if (tool.tool !== 'highlighter') return;
+			this.deps.overlays.redrawPage(this.canvas);
+			drawHighlighterPolyline(
+				this.ctx,
+				this.state.drawingPoints(),
+				tool.color,
+				tool.width,
+				readCanvasSurface(this.canvas),
+			);
+		});
+	}
+
+	private cancelHighlighterRedraw(): void {
+		if (this.highlighterFrame === null) return;
+		window.cancelAnimationFrame(this.highlighterFrame);
+		this.highlighterFrame = null;
 	}
 
 	private finalizeEraserGesture(): void {
