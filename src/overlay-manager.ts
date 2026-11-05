@@ -161,12 +161,14 @@ export class OverlayManager {
 		const pageNumber = pageNumberAttr ? parseInt(pageNumberAttr, 10) : NaN;
 		if (Number.isNaN(pageNumber)) return;
 		const key = pageKey(filePath, pageNumber);
+		const host = this.overlayHostForPage(page);
 		this.observePageVisibility(page);
 
 		page.querySelector(LEGACY_OVERLAY_SELECTOR)?.remove();
 		const existing = page.querySelector<HTMLCanvasElement>(`canvas.${OVERLAY_CLASS}`);
 		if (existing) {
 			if (existing.getAttribute(OVERLAY_KEY_ATTR) === key) {
+				if (!host.contains(existing)) host.appendChild(existing);
 				this.sizeOverlayToPage(existing, page);
 				this.redrawPage(existing);
 				return;
@@ -175,13 +177,16 @@ export class OverlayManager {
 		}
 
 		page.classList.add(PAGE_ANCHOR_CLASS);
+		if (host !== page && window.getComputedStyle(host).position === 'static') {
+			host.classList.add(PAGE_ANCHOR_CLASS);
+		}
 		const overlay = activeDocument.createElement('canvas');
 		overlay.className = OVERLAY_CLASS;
 		overlay.width = 0;
 		overlay.height = 0;
 		overlay.setAttribute(OVERLAY_KEY_ATTR, key);
 		this.sizeOverlayToPage(overlay, page);
-		page.appendChild(overlay);
+		host.appendChild(overlay);
 		this.disableTextLayerInteraction(page);
 		this.wireOverlay(overlay);
 		this.redrawPage(overlay);
@@ -196,9 +201,10 @@ export class OverlayManager {
 			const current = findOverlay();
 			if (!current) return;
 			this.disableTextLayerInteraction(page);
-			if (!page.contains(current)) {
+			const currentHost = this.overlayHostForPage(page);
+			if (!currentHost.contains(current)) {
 				this.sizeOverlayToPage(current, page);
-				page.appendChild(current);
+				currentHost.appendChild(current);
 				this.redrawPage(current);
 			}
 		});
@@ -213,6 +219,10 @@ export class OverlayManager {
 		});
 		resizeObserver.observe(page);
 		this.pageObservers.add(resizeObserver);
+	}
+
+	private overlayHostForPage(page: HTMLElement): HTMLElement {
+		return page.querySelector<HTMLElement>('.canvasWrapper') ?? page;
 	}
 
 	private observePageVisibility(page: HTMLElement): void {
@@ -247,7 +257,7 @@ export class OverlayManager {
 	}
 
 	private sizeOverlayToPage(overlay: HTMLCanvasElement, page: HTMLElement): void {
-		const rect = page.getBoundingClientRect();
+		const rect = this.overlayHostForPage(page).getBoundingClientRect();
 		if (rect.width === 0 || rect.height === 0) return;
 		overlay.style.width = `${rect.width}px`;
 		overlay.style.height = `${rect.height}px`;

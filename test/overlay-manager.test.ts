@@ -135,4 +135,23 @@ describe('OverlayManager plugin reload', () => {
 		);
 		expect(canvases[0]!.width * canvases[0]!.height).toBe(0);
 	});
+
+	it('aligns the overlay to the PDF canvas wrapper inside the page', () => {
+		const leaf = pdfLeafWithPages(1);
+		const page = leaf.view.containerEl.querySelector<HTMLElement>('.page')!;
+		page.getBoundingClientRect = () =>
+			({ left: 0, top: 0, width: 800, height: 1000 }) as DOMRect;
+		const wrapper = document.createElement('div');
+		wrapper.className = 'canvasWrapper';
+		wrapper.getBoundingClientRect = () =>
+			({ left: 8, top: 36, width: 784, height: 928 }) as DOMRect;
+		page.appendChild(wrapper);
+
+		new OverlayManager(appWith(leaf), new StrokeStore(), () => {}).attachToActivePdf();
+
+		const overlay = page.querySelector<HTMLCanvasElement>('canvas.jot-overlay-canvas')!;
+		expect(overlay.parentElement).toBe(wrapper);
+		expect(overlay.style.width).toBe('784px');
+		expect(overlay.style.height).toBe('928px');
+	});
 });
