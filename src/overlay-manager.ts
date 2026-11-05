@@ -273,16 +273,20 @@ export class OverlayManager {
 				? pdfCanvasRect
 				: hostRect;
 		if (rect.width === 0 || rect.height === 0) return;
-		overlay.style.left = `${rect.left - hostRect.left}px`;
-		overlay.style.top = `${rect.top - hostRect.top}px`;
-		overlay.style.width = `${rect.width}px`;
-		overlay.style.height = `${rect.height}px`;
+		const scaleX = host.offsetWidth > 0 ? hostRect.width / host.offsetWidth : 1;
+		const scaleY = host.offsetHeight > 0 ? hostRect.height / host.offsetHeight : 1;
+		const cssWidth = rect.width / scaleX;
+		const cssHeight = rect.height / scaleY;
+		overlay.style.left = `${(rect.left - hostRect.left) / scaleX - host.clientLeft}px`;
+		overlay.style.top = `${(rect.top - hostRect.top) / scaleY - host.clientTop}px`;
+		overlay.style.width = `${cssWidth}px`;
+		overlay.style.height = `${cssHeight}px`;
 		if (!this.visiblePages.has(page)) {
 			applyBackingStoreSize(overlay, 0, 0, 1);
 			return;
 		}
-		const dpr = cappedPixelRatio(rect.width, rect.height, devicePixelRatioFor(window));
-		applyBackingStoreSize(overlay, rect.width, rect.height, dpr);
+		const dpr = cappedPixelRatio(cssWidth, cssHeight, devicePixelRatioFor(window));
+		applyBackingStoreSize(overlay, cssWidth, cssHeight, dpr);
 	}
 
 	private disableTextLayerInteraction(page: HTMLElement): void {

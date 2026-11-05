@@ -159,4 +159,30 @@ describe('OverlayManager plugin reload', () => {
 		expect(overlay.style.width).toBe('784px');
 		expect(overlay.style.height).toBe('928px');
 	});
+
+	it('converts the PDF canvas rect to local CSS units when its wrapper is scaled', () => {
+		const leaf = pdfLeafWithPages(1);
+		const page = leaf.view.containerEl.querySelector<HTMLElement>('.page')!;
+		page.getBoundingClientRect = () =>
+			({ left: 0, top: 0, width: 1600, height: 2000 }) as DOMRect;
+		const wrapper = document.createElement('div');
+		wrapper.className = 'canvasWrapper';
+		Object.defineProperty(wrapper, 'offsetWidth', { value: 784 });
+		Object.defineProperty(wrapper, 'offsetHeight', { value: 928 });
+		wrapper.getBoundingClientRect = () =>
+			({ left: 8, top: 36, width: 1568, height: 1856 }) as DOMRect;
+		const pdfCanvas = document.createElement('canvas');
+		pdfCanvas.getBoundingClientRect = () =>
+			({ left: 28, top: 60, width: 1520, height: 1760 }) as DOMRect;
+		wrapper.appendChild(pdfCanvas);
+		page.appendChild(wrapper);
+
+		new OverlayManager(appWith(leaf), new StrokeStore(), () => {}).attachToActivePdf();
+
+		const overlay = page.querySelector<HTMLCanvasElement>('canvas.jot-overlay-canvas')!;
+		expect(overlay.style.left).toBe('10px');
+		expect(overlay.style.top).toBe('12px');
+		expect(overlay.style.width).toBe('760px');
+		expect(overlay.style.height).toBe('880px');
+	});
 });
