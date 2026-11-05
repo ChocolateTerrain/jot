@@ -1,5 +1,5 @@
 /* eslint-disable obsidianmd/prefer-active-doc */
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { App } from 'obsidian';
 import { OverlayManager } from '../src/overlay-manager';
 import { StrokeStore } from '../src/stroke-store';
@@ -31,6 +31,7 @@ beforeAll(() => {
 
 afterEach(() => {
 	document.body.innerHTML = '';
+	vi.unstubAllGlobals();
 });
 
 describe('OverlayManager plugin reload', () => {
@@ -88,5 +89,50 @@ describe('OverlayManager plugin reload', () => {
 		manager.attachToActivePdf();
 
 		expect(wired).toHaveLength(1);
+	});
+
+	it('allocates backing stores only while pages are near the viewport', () => {
+		let visibilityCallback!: IntersectionObserverCallback;
+		class FakeIntersectionObserver {
+			constructor(callback: IntersectionObserverCallback) {
+				visibilityCallback = callback;
+			}
+			observe() {}
+			disconnect() {}
+		}
+		vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+
+		const leaf = pdfLeafWithPages(3);
+		const pages: HTMLElement[] = [];
+		leaf.view.containerEl
+			.querySelectorAll<HTMLElement>('.page')
+			.forEach((page) => pages.push(page));
+		for (const page of pages) {
+			page.getBoundingClientRect = () => ({ width: 800, height: 1000 }) as DOMRect;
+		}
+		const manager = new OverlayManager(appWith(leaf), new StrokeStore(), () => {});
+		manager.attachToActivePdf();
+
+		const canvases: HTMLCanvasElement[] = [];
+		leaf.view.containerEl
+			.querySelectorAll<HTMLCanvasElement>('canvas.jot-overlay-canvas')
+			.forEach((canvas) => canvases.push(canvas));
+		expect(canvases.map((canvas) => canvas.width * canvas.height)).toEqual([0, 0, 0]);
+
+		visibilityCallback(
+			[
+				{ target: pages[0]!, isIntersecting: true } as unknown as IntersectionObserverEntry,
+			],
+			{} as IntersectionObserver,
+		);
+		expect(canvases[0]!.width * canvases[0]!.height).toBe(800_000);
+
+		visibilityCallback(
+			[
+				{ target: pages[0]!, isIntersecting: false } as unknown as IntersectionObserverEntry,
+			],
+			{} as IntersectionObserver,
+		);
+		expect(canvases[0]!.width * canvases[0]!.height).toBe(0);
 	});
 });

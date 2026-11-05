@@ -21,7 +21,9 @@ export const OVERLAY_KEY_ATTR = 'data-jot-key';
 
 export class OverlayManager {
 	private containerObservers = new Map<WorkspaceLeaf, MutationObserver>();
-	private pageObservers = new Set<MutationObserver | ResizeObserver>();
+	private pageObservers = new Set<MutationObserver | ResizeObserver | IntersectionObserver>();
+	private visiblePages = new WeakSet<HTMLElement>();
+	private visibilityObserver: IntersectionObserver | null = null;
 	// Tracked here rather than in the DOM: 1.0.8 left its marker attribute on
 	// pages whose observers it never disconnected.
 	private observedPages = new WeakSet<HTMLElement>();
@@ -73,6 +75,8 @@ export class OverlayManager {
 		this.containerObservers.clear();
 		this.pageObservers.forEach((observer) => observer.disconnect());
 		this.pageObservers.clear();
+		this.visibilityObserver = null;
+		this.visiblePages = new WeakSet();
 		this.observedPages = new WeakSet();
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			const container = leaf.view.containerEl;
@@ -87,6 +91,7 @@ export class OverlayManager {
 	}
 
 	redrawPage(canvas: HTMLCanvasElement): void {
+		if (canvas.width === 0 || canvas.height === 0) return;
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return;
 		const surface = readCanvasSurface(canvas);
@@ -156,6 +161,7 @@ export class OverlayManager {
 		const pageNumber = pageNumberAttr ? parseInt(pageNumberAttr, 10) : NaN;
 		if (Number.isNaN(pageNumber)) return;
 		const key = pageKey(filePath, pageNumber);
+		this.observePageVisibility(page);
 
 		page.querySelector(LEGACY_OVERLAY_SELECTOR)?.remove();
 		const existing = page.querySelector<HTMLCanvasElement>(`canvas.${OVERLAY_CLASS}`);
@@ -171,6 +177,8 @@ export class OverlayManager {
 		page.classList.add(PAGE_ANCHOR_CLASS);
 		const overlay = activeDocument.createElement('canvas');
 		overlay.className = OVERLAY_CLASS;
+		overlay.width = 0;
+		overlay.height = 0;
 		overlay.setAttribute(OVERLAY_KEY_ATTR, key);
 		this.sizeOverlayToPage(overlay, page);
 		page.appendChild(overlay);
@@ -207,15 +215,48 @@ export class OverlayManager {
 		this.pageObservers.add(resizeObserver);
 	}
 
+	private observePageVisibility(page: HTMLElement): void {
+		if (typeof IntersectionObserver === 'undefined') {
+			this.visiblePages.add(page);
+			return;
+		}
+		if (!this.visibilityObserver) {
+			this.visibilityObserver = new IntersectionObserver(
+				(entries) => {
+					for (const entry of entries) {
+						const targetPage = entry.target as HTMLElement;
+					const overlay = targetPage.querySelector<HTMLCanvasElement>(
+						`canvas.${OVERLAY_CLASS}`,
+					);
+					if (!overlay) continue;
+					if (entry.isIntersecting) {
+						this.visiblePages.add(targetPage);
+						this.sizeOverlayToPage(overlay, targetPage);
+						this.redrawPage(overlay);
+					} else {
+						this.visiblePages.delete(targetPage);
+						applyBackingStoreSize(overlay, 0, 0, 1);
+					}
+					}
+				},
+				{ rootMargin: '100% 0px' },
+			);
+			this.pageObservers.add(this.visibilityObserver);
+		}
+		this.visibilityObserver.observe(page);
+	}
+
 	private sizeOverlayToPage(overlay: HTMLCanvasElement, page: HTMLElement): void {
 		const rect = page.getBoundingClientRect();
 		if (rect.width === 0 || rect.height === 0) return;
+		overlay.style.width = `${rect.width}px`;
+		overlay.style.height = `${rect.height}px`;
+		if (!this.visiblePages.has(page)) {
+			applyBackingStoreSize(overlay, 0, 0, 1);
+			return;
+		}
 		const dpr = cappedPixelRatio(rect.width, rect.height, devicePixelRatioFor(window));
 		applyBackingStoreSize(overlay, rect.width, rect.height, dpr);
-		overlay.setCssStyles({
-			width: `${rect.width}px`,
-			height: `${rect.height}px`,
-		});
 	}
 
 	private disableTextLayerInteraction(page: HTMLElement): void {
