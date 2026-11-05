@@ -16,6 +16,7 @@ function makeCtx() {
 		beginPath: vi.fn(),
 		moveTo: vi.fn(),
 		lineTo: vi.fn(),
+		translate: vi.fn(),
 		stroke: vi.fn(),
 		save: vi.fn(),
 		restore: vi.fn(),
@@ -128,10 +129,18 @@ describe('drawHighlighterPolyline', () => {
 			canvas: targetCanvas,
 			drawImage: vi.fn(),
 		});
+		const points = [point(0, 0), point(0.5, 0.5), point(0, 0)];
 
 		drawHighlighterPolyline(
 			ctx as unknown as CanvasRenderingContext2D,
-			[point(0, 0), point(0.5, 0.5), point(0, 0)],
+			points,
+			'#ff0',
+			0.005,
+			{ width: 800, height: 600 },
+		);
+		drawHighlighterPolyline(
+			ctx as unknown as CanvasRenderingContext2D,
+			points,
 			'#ff0',
 			0.005,
 			{ width: 800, height: 600 },
@@ -139,7 +148,8 @@ describe('drawHighlighterPolyline', () => {
 
 		expect(maskCtx.stroke).toHaveBeenCalledOnce();
 		expect(ctx.stroke).not.toHaveBeenCalled();
-		expect(ctx.drawImage).toHaveBeenCalledOnce();
+		expect(ctx.drawImage).toHaveBeenCalledTimes(2);
+		expect(targetCanvas.ownerDocument.createElement).toHaveBeenCalledOnce();
 	});
 	it('does nothing for fewer than two points', () => {
 		const ctx = makeCtx();

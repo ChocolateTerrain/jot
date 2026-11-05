@@ -5,6 +5,12 @@
 	z-index: 1000;
 }
 
+.jot-drawing-preview {
+	position: absolute;
+	pointer-events: none;
+	z-index: 1001;
+}
+
 .jot-page-anchor {
 	position: relative;
 }

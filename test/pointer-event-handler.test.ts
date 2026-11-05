@@ -12,6 +12,7 @@ beforeAll(() => {
 
 afterEach(() => {
 	vi.useRealTimers();
+	vi.restoreAllMocks();
 	document.body.innerHTML = '';
 });
 
@@ -187,5 +188,72 @@ describe('PointerEventHandler', () => {
 		vi.advanceTimersByTime(300);
 		expect(showPalette).toHaveBeenCalledOnce();
 		dispatchTouch(canvas, 'touchend', holdTouch, []);
+	});
+
+	it('does not redraw saved strokes while drawing new segments', () => {
+		vi.useFakeTimers();
+		vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+			makeDrawingContext(),
+		);
+		const redrawPage = vi.fn();
+		const deps = {
+			palette: { isOpen: () => false, show: vi.fn() },
+			strokes: new StrokeStore(),
+			overlays: { redrawPage },
+			sidecar: { scheduleSave: vi.fn() },
+			undo: { push: vi.fn() },
+			toolState: () => ({ tool: 'pen', color: '#000000', width: 0.005 }),
+			handedness: () => 'right',
+			penHold: () => ({ enabled: false, durationMs: 300 }),
+		} as unknown as PointerEventHandlerDeps;
+		const canvas = document.createElement('canvas');
+		canvas.width = 100;
+		canvas.height = 100;
+		canvas.setAttribute('data-jot-key', 'doc.pdf::1');
+		canvas.getBoundingClientRect = () =>
+			({ left: 0, top: 0, width: 100, height: 100 }) as DOMRect;
+		document.body.appendChild(canvas);
+		new PointerEventHandler(canvas, makeDrawingContext(), deps).attach();
+
+		canvas.dispatchEvent(
+			new PointerEvent('pointerdown', {
+				bubbles: true,
+				cancelable: true,
+				pointerId: 3,
+				pointerType: 'pen',
+				clientX: 10,
+				clientY: 10,
+				pressure: 0.5,
+			}),
+		);
+		for (const clientX of [20, 30, 40]) {
+			canvas.dispatchEvent(
+				new PointerEvent('pointermove', {
+					bubbles: true,
+					pointerId: 3,
+					pointerType: 'pen',
+					clientX,
+					clientY: 10,
+					pressure: 0.5,
+				}),
+			);
+			vi.advanceTimersByTime(20);
+		}
+
+		expect(redrawPage).not.toHaveBeenCalled();
+		expect(document.querySelectorAll('.jot-drawing-preview')).toHaveLength(1);
+		canvas.dispatchEvent(
+			new PointerEvent('pointerup', {
+				bubbles: true,
+				pointerId: 3,
+				pointerType: 'pen',
+				clientX: 40,
+				clientY: 10,
+				pressure: 0,
+			}),
+		);
+		expect(document.querySelectorAll('.jot-drawing-preview')).toHaveLength(0);
+		vi.advanceTimersByTime(20);
+		expect(redrawPage).toHaveBeenCalledOnce();
 	});
 });

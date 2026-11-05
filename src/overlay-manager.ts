@@ -13,6 +13,7 @@ import type { StrokeStore } from './stroke-store';
 // nothing can disconnect those observers now. They look overlays up by the
 // old class, so a new class keeps them from redrawing ours with stale strokes.
 const OVERLAY_CLASS = 'jot-overlay-canvas';
+const DRAWING_PREVIEW_CLASS = 'jot-drawing-preview';
 const LEGACY_OVERLAY_SELECTOR = 'canvas.jot-overlay';
 const PAGE_ANCHOR_CLASS = 'jot-page-anchor';
 const PASSTHROUGH_CLASS = 'jot-passthrough';
@@ -81,6 +82,7 @@ export class OverlayManager {
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			const container = leaf.view.containerEl;
 			container.querySelectorAll(`canvas.${OVERLAY_CLASS}`).forEach((el) => el.remove());
+			container.querySelectorAll(`canvas.${DRAWING_PREVIEW_CLASS}`).forEach((el) => el.remove());
 			container
 				.querySelectorAll(`.${PAGE_ANCHOR_CLASS}`)
 				.forEach((page) => page.classList.remove(PAGE_ANCHOR_CLASS));

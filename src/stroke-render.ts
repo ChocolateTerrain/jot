@@ -14,7 +14,13 @@ export interface CanvasSize {
 export const HIGHLIGHTER_ALPHA = 0.35;
 export const HIGHLIGHTER_WIDTH_FACTOR = 4;
 
-const highlighterMasks = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+interface CachedHighlighter {
+	bitmap: HTMLCanvasElement;
+	left: number;
+	top: number;
+}
+
+const highlighterCache = new WeakMap<NormalizedPoint[], Map<string, CachedHighlighter>>();
 
 function denormalize(point: NormalizedPoint, canvas: CanvasSize) {
 	return { x: point.x * canvas.width, y: point.y * canvas.height };
@@ -69,36 +75,88 @@ export function drawHighlighterPolyline(
 		drawHighlighterPath(ctx, points, color, baseWidth, canvas, HIGHLIGHTER_ALPHA);
 		return;
 	}
-	let mask = highlighterMasks.get(targetCanvas);
-	if (!mask) {
-		mask = targetCanvas.ownerDocument.createElement('canvas');
-		highlighterMasks.set(targetCanvas, mask);
+	const key = [
+		targetCanvas.width,
+		targetCanvas.height,
+		canvas.width,
+		canvas.height,
+		canvas.dpr ?? 1,
+		baseWidth,
+		color,
+	].join(':');
+	let bitmap = highlighterCache.get(points)?.get(key);
+	if (!bitmap) {
+		const createdBitmap = createHighlighterBitmap(
+			targetCanvas,
+			points,
+			color,
+			baseWidth,
+			canvas,
+		);
+		if (!createdBitmap) {
+			drawHighlighterPath(ctx, points, color, baseWidth, canvas, HIGHLIGHTER_ALPHA);
+			return;
+		}
+		bitmap = createdBitmap;
+		let entries = highlighterCache.get(points);
+		if (!entries) {
+			entries = new Map();
+			highlighterCache.set(points, entries);
+		}
+		entries.set(key, bitmap);
 	}
-	if (mask.width !== targetCanvas.width || mask.height !== targetCanvas.height) {
-		mask.width = targetCanvas.width;
-		mask.height = targetCanvas.height;
-	}
-	const maskCtx = mask.getContext('2d');
-	if (!maskCtx) {
-		drawHighlighterPath(ctx, points, color, baseWidth, canvas, HIGHLIGHTER_ALPHA);
-		return;
-	}
-	maskCtx.save();
-	maskCtx.setTransform(1, 0, 0, 1, 0, 0);
-	maskCtx.clearRect(0, 0, mask.width, mask.height);
-	applyDprTransform(maskCtx, canvas);
-	maskCtx.lineWidth = baseWidth * HIGHLIGHTER_WIDTH_FACTOR * canvas.height;
-	maskCtx.strokeStyle = color;
-	maskCtx.lineCap = 'round';
-	maskCtx.lineJoin = 'round';
-	tracePolyline(maskCtx, points, canvas);
-	maskCtx.restore();
 
 	ctx.save();
 	ctx.setTransform(1, 0, 0, 1, 0, 0);
 	ctx.globalAlpha = HIGHLIGHTER_ALPHA;
-	ctx.drawImage(mask, 0, 0);
+	ctx.drawImage(bitmap.bitmap, bitmap.left, bitmap.top);
 	ctx.restore();
+}
+
+function createHighlighterBitmap(
+	target: HTMLCanvasElement,
+	points: NormalizedPoint[],
+	color: string,
+	baseWidth: number,
+	canvas: CanvasSize,
+): CachedHighlighter | null {
+	const dpr = canvas.dpr ?? 1;
+	const padding = (baseWidth * HIGHLIGHTER_WIDTH_FACTOR * canvas.height) / 2 + 2;
+	let minPointX = Infinity;
+	let minPointY = Infinity;
+	let maxPointX = -Infinity;
+	let maxPointY = -Infinity;
+	for (const point of points) {
+		const x = point.x * canvas.width;
+		const y = point.y * canvas.height;
+		minPointX = Math.min(minPointX, x);
+		minPointY = Math.min(minPointY, y);
+		maxPointX = Math.max(maxPointX, x);
+		maxPointY = Math.max(maxPointY, y);
+	}
+	const minX = Math.max(0, minPointX - padding);
+	const minY = Math.max(0, minPointY - padding);
+	const maxX = Math.min(canvas.width, maxPointX + padding);
+	const maxY = Math.min(canvas.height, maxPointY + padding);
+	const left = Math.floor(minX * dpr);
+	const top = Math.floor(minY * dpr);
+	const right = Math.min(target.width, Math.ceil(maxX * dpr));
+	const bottom = Math.min(target.height, Math.ceil(maxY * dpr));
+	if (right <= left || bottom <= top) return null;
+
+	const bitmap = target.ownerDocument.createElement('canvas');
+	bitmap.width = right - left;
+	bitmap.height = bottom - top;
+	const bitmapCtx = bitmap.getContext('2d');
+	if (!bitmapCtx) return null;
+	bitmapCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	bitmapCtx.translate(-left / dpr, -top / dpr);
+	bitmapCtx.lineWidth = baseWidth * HIGHLIGHTER_WIDTH_FACTOR * canvas.height;
+	bitmapCtx.strokeStyle = color;
+	bitmapCtx.lineCap = 'round';
+	bitmapCtx.lineJoin = 'round';
+	tracePolyline(bitmapCtx, points, canvas);
+	return { bitmap, left, top };
 }
 
 function drawHighlighterPath(

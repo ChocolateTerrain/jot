@@ -1,5 +1,6 @@
 import { readCanvasSurface } from './canvas-surface';
 import { createHoldIndicator } from './hold-indicator';
+import { DrawingPreview } from './drawing-preview';
 import { pdfPathFromKey } from './jot-file';
 import { LongPressDetector } from './long-press';
 import type { Handedness, Palette, ToolState } from './palette';
@@ -13,7 +14,6 @@ import {
 	Stroke,
 	strokeIntersects,
 } from './stroke-math';
-import { drawStroke } from './stroke-render';
 import type { StrokeStore } from './stroke-store';
 import { StylusGestureGuard } from './stylus-gesture-guard';
 import { TwoFingerHoldDetector } from './two-finger-hold';
@@ -39,7 +39,7 @@ export interface PointerEventHandlerDeps {
 export class PointerEventHandler {
 	private state = new PenStrokeState();
 	private activePointerId: number | null = null;
-	private drawingFrame: number | null = null;
+	private drawingPreview: DrawingPreview | null = null;
 	private stylusTouchId: number | null = null;
 	private holdIndicator: HTMLElement | null = null;
 	private twoFingerIndicator: HTMLElement | null = null;
@@ -128,7 +128,6 @@ export class PointerEventHandler {
 		}
 		if (this.stylusTouchId !== null) return;
 		this.longPress.cancel();
-		this.cancelDrawingRedraw();
 		if (this.state.isErasing()) {
 			this.finalizeEraserGesture();
 			this.releasePointerCapture();
@@ -143,7 +142,7 @@ export class PointerEventHandler {
 
 	private onLongPressFire(): void {
 		this.removeHoldIndicator();
-		this.cancelDrawingRedraw();
+		this.destroyDrawingPreview();
 		const { clientX, clientY } = this.state.pressedAt;
 		this.state.reset();
 		this.deps.overlays.redrawPage(this.canvas);
@@ -171,6 +170,7 @@ export class PointerEventHandler {
 		);
 		if (this.state.isDrawing()) {
 			this.state.appendDrawingPoint(this.toNormalized(clientX, clientY, pressure));
+			this.drawingPreview = DrawingPreview.create(this.canvas, this.deps.toolState().tool);
 		}
 		const penHold = this.deps.penHold();
 		if (penHold.enabled) {
@@ -185,28 +185,19 @@ export class PointerEventHandler {
 		if (!previous) return;
 		const next = this.toNormalized(clientX, clientY, pressure);
 		this.state.appendDrawingPoint(next);
-		this.scheduleDrawingRedraw();
+		const tool = this.deps.toolState();
+		this.drawingPreview?.drawSegment(
+			previous,
+			next,
+			tool.color,
+			tool.width,
+			readCanvasSurface(this.canvas),
+		);
 	}
 
-	private scheduleDrawingRedraw(): void {
-		if (this.drawingFrame !== null) return;
-		this.drawingFrame = window.requestAnimationFrame(() => {
-			this.drawingFrame = null;
-			if (!this.state.isDrawing()) return;
-			const tool = this.deps.toolState();
-			this.deps.overlays.redrawPage(this.canvas);
-			drawStroke(
-				this.ctx,
-				{ points: this.state.drawingPoints(), ...tool },
-				readCanvasSurface(this.canvas),
-			);
-		});
-	}
-
-	private cancelDrawingRedraw(): void {
-		if (this.drawingFrame === null) return;
-		window.cancelAnimationFrame(this.drawingFrame);
-		this.drawingFrame = null;
+	private destroyDrawingPreview(): void {
+		this.drawingPreview?.destroy();
+		this.drawingPreview = null;
 	}
 
 	private finalizeEraserGesture(): void {
@@ -245,6 +236,7 @@ export class PointerEventHandler {
 			if (pdfPath) this.deps.sidecar.scheduleSave(pdfPath);
 		}
 		this.state.reset();
+		this.destroyDrawingPreview();
 		this.deps.onHistoryChange?.();
 	}
 
@@ -348,11 +340,11 @@ export class PointerEventHandler {
 		if (!touch) return;
 		this.stylusTouchId = null;
 		this.longPress.cancel();
-		this.cancelDrawingRedraw();
 		if (this.state.isErasing()) {
 			this.finalizeEraserGesture();
 		} else if (this.state.isDrawing()) {
 			this.finalizeDrawingStroke();
+			this.destroyDrawingPreview();
 			window.requestAnimationFrame(() => this.deps.overlays.redrawPage(this.canvas));
 		}
 	}
