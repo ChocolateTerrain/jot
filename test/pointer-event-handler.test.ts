@@ -31,6 +31,16 @@ function makeTouchList(touches: Touch[]): TouchList {
 	return list;
 }
 
+function makeDrawingContext(): CanvasRenderingContext2D {
+	return {
+		setTransform: vi.fn(),
+		beginPath: vi.fn(),
+		moveTo: vi.fn(),
+		lineTo: vi.fn(),
+		stroke: vi.fn(),
+	} as unknown as CanvasRenderingContext2D;
+}
+
 function dispatchTouch(
 	canvas: HTMLCanvasElement,
 	type: string,
@@ -46,7 +56,7 @@ function dispatchTouch(
 }
 
 describe('PointerEventHandler', () => {
-	it('continues pen input when pointer capture is unavailable', () => {
+	it('ignores a light pen tap and continues input when pointer capture is unavailable', () => {
 		vi.useFakeTimers();
 		const strokes = new StrokeStore();
 		const showPalette = vi.fn();
@@ -69,7 +79,7 @@ describe('PointerEventHandler', () => {
 			throw new Error('pointer capture unavailable');
 		};
 		document.body.appendChild(canvas);
-		new PointerEventHandler(canvas, {} as CanvasRenderingContext2D, deps).attach();
+		new PointerEventHandler(canvas, makeDrawingContext(), deps).attach();
 
 		canvas.dispatchEvent(
 			new PointerEvent('pointerdown', {
@@ -78,6 +88,16 @@ describe('PointerEventHandler', () => {
 				pointerId: 1,
 				pointerType: 'pen',
 				clientX: 20,
+				clientY: 30,
+				pressure: 0.5,
+			}),
+		);
+		canvas.dispatchEvent(
+			new PointerEvent('pointermove', {
+				bubbles: true,
+				pointerId: 1,
+				pointerType: 'pen',
+				clientX: 21,
 				clientY: 30,
 				pressure: 0.5,
 			}),
@@ -93,8 +113,8 @@ describe('PointerEventHandler', () => {
 			}),
 		);
 
-		expect(strokes.forKey('doc.pdf::1')).toHaveLength(1);
-		expect(scheduleSave).toHaveBeenCalledOnce();
+		expect(strokes.forKey('doc.pdf::1')).toHaveLength(0);
+		expect(scheduleSave).not.toHaveBeenCalled();
 
 		canvas.dispatchEvent(
 			new PointerEvent('pointerdown', {
@@ -132,9 +152,10 @@ describe('PointerEventHandler', () => {
 		canvas.getBoundingClientRect = () =>
 			({ left: 0, top: 0, width: 100, height: 100 }) as DOMRect;
 		document.body.appendChild(canvas);
-		new PointerEventHandler(canvas, {} as CanvasRenderingContext2D, deps).attach();
+		new PointerEventHandler(canvas, makeDrawingContext(), deps).attach();
 
 		const touch = makeStylusTouch(1, 20, 30);
+		const movedTouch = makeStylusTouch(1, 40, 50);
 		canvas.dispatchEvent(
 			new PointerEvent('pointerdown', {
 				bubbles: true,
@@ -145,6 +166,7 @@ describe('PointerEventHandler', () => {
 			}),
 		);
 		dispatchTouch(canvas, 'touchstart', touch, [touch]);
+		dispatchTouch(canvas, 'touchmove', movedTouch, [movedTouch]);
 		dispatchTouch(canvas, 'touchend', touch, []);
 		canvas.dispatchEvent(
 			new PointerEvent('pointerup', {
@@ -157,6 +179,7 @@ describe('PointerEventHandler', () => {
 		);
 
 		expect(strokes.forKey('doc.pdf::1')).toHaveLength(1);
+		expect(strokes.forKey('doc.pdf::1')[0]?.points).toHaveLength(2);
 		expect(scheduleSave).toHaveBeenCalledOnce();
 
 		const holdTouch = makeStylusTouch(2, 40, 50);

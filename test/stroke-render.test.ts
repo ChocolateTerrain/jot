@@ -110,6 +110,7 @@ describe('drawHighlighterPolyline', () => {
 			{ width: 800, height: 600, dpr: 3 },
 		);
 		expect(ctx.lineWidth).toBe(0.005 * HIGHLIGHTER_WIDTH_FACTOR * 600);
+		expect(ctx.lineCap).toBe('round');
 	});
 	it('does nothing for fewer than two points', () => {
 		const ctx = makeCtx();

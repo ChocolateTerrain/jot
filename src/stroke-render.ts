@@ -66,7 +66,7 @@ export function drawHighlighterPolyline(
 	applyDprTransform(ctx, canvas);
 	ctx.lineWidth = baseWidth * HIGHLIGHTER_WIDTH_FACTOR * canvas.height;
 	ctx.strokeStyle = color;
-	ctx.lineCap = 'butt';
+	ctx.lineCap = 'round';
 	ctx.lineJoin = 'round';
 	ctx.globalAlpha = HIGHLIGHTER_ALPHA;
 	ctx.beginPath();

@@ -37,7 +37,7 @@ export function drawStrokesOnPdfPage(page: PDFPage, strokes: Stroke[]) {
 					thickness,
 					color,
 					opacity: HIGHLIGHTER_ALPHA,
-					lineCap: LineCapStyle.Butt,
+					lineCap: LineCapStyle.Round,
 				});
 			}
 			continue;

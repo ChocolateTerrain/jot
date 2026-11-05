@@ -22,6 +22,7 @@ import type { UndoController } from './undo-controller';
 const LONG_PRESS_MOVE_PX = 15;
 const TWO_FINGER_HOLD_MS = 300;
 const TWO_FINGER_MOVE_PX = 25;
+const MIN_STROKE_MOVEMENT_PX = 2;
 
 export interface PointerEventHandlerDeps {
 	palette: Palette;
@@ -225,7 +226,18 @@ export class PointerEventHandler {
 	private finalizeDrawingStroke(): void {
 		const points = this.state.drawingPoints();
 		const key = this.canvas.getAttribute(OVERLAY_KEY_ATTR);
-		if (key && points.length > 0) {
+		const firstPoint = points[0];
+		const rect = this.canvas.getBoundingClientRect();
+		const movedEnough =
+			firstPoint !== undefined &&
+			points.some(
+				(point) =>
+					Math.hypot(
+						(point.x - firstPoint.x) * rect.width,
+						(point.y - firstPoint.y) * rect.height,
+					) >= MIN_STROKE_MOVEMENT_PX,
+			);
+		if (key && movedEnough) {
 			const pdfPath = pdfPathFromKey(key);
 			const tool = this.deps.toolState();
 			if (pdfPath) {

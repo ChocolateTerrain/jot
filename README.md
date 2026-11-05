@@ -30,7 +30,7 @@ Status: **early, working**. PDFs only for now.
 
 ### Beta builds
 
-To try unreleased changes, install [BRAT](https://github.com/TfTHacker/obsidian42-brat) and add `https://github.com/bverbeken/jot` as a beta plugin.
+To try unreleased changes, install [BRAT](https://github.com/TfTHacker/obsidian42-brat) and add `https://github.com/ChocolateTerrain/jot` as a beta plugin.
 
 ## Using it
 
@@ -55,6 +55,6 @@ Open `dev-vault/` as a vault in Obsidian to test. The dev vault is gitignored an
 
 ### Testing on iPad
 
-1. Cut a GitHub release (`npm version patch` then `git push origin <tag>` — the release workflow uploads `main.js`, `manifest.json`, `styles.css`).
+1. Cut a beta release (`npm version prerelease` then `git push origin main --follow-tags` — the release workflow uploads `main.js`, `manifest.json`, and `styles.css`).
 2. On the iPad, install **BRAT** into a *separate dev vault* — never your real one.
 3. In BRAT, add this repo as a beta plugin. BRAT pulls the release and installs it.
