@@ -9,8 +9,13 @@ export class PenStrokeState {
 	private eraserTouched = false;
 	pressedAt = { clientX: 0, clientY: 0 };
 
-	beginAt(e: PointerEvent, tool: Tool, snapshotForEraser: () => UndoEntry | null): void {
-		this.pressedAt = { clientX: e.clientX, clientY: e.clientY };
+	beginAt(
+		clientX: number,
+		clientY: number,
+		tool: Tool,
+		snapshotForEraser: () => UndoEntry | null,
+	): void {
+		this.pressedAt = { clientX, clientY };
 		if (tool === 'eraser') {
 			this.eraserActive = true;
 			this.eraserTouched = false;

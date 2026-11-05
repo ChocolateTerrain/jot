@@ -38,6 +38,7 @@ export class PointerEventHandler {
 	private state = new PenStrokeState();
 	private activePointerId: number | null = null;
 	private highlighterFrame: number | null = null;
+	private stylusTouchId: number | null = null;
 	private holdIndicator: HTMLElement | null = null;
 	private twoFingerIndicator: HTMLElement | null = null;
 	private stylusGuard = new StylusGestureGuard();
@@ -68,6 +69,14 @@ export class PointerEventHandler {
 
 	attach(): void {
 		this.blockStylusGesturePreemption();
+		this.canvas.addEventListener('touchstart', (e) => this.onStylusTouchStart(e), {
+			passive: false,
+		});
+		this.canvas.addEventListener('touchmove', (e) => this.onStylusTouchMove(e), {
+			passive: false,
+		});
+		this.canvas.addEventListener('touchend', (e) => this.onStylusTouchFinish(e));
+		this.canvas.addEventListener('touchcancel', (e) => this.onStylusTouchFinish(e));
 		this.canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
 		this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
 		this.canvas.addEventListener('pointerup', (e) => this.onFinish(e));
@@ -81,6 +90,7 @@ export class PointerEventHandler {
 			return;
 		}
 		if (e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
+		if (this.stylusTouchId !== null) return;
 		if (this.deps.palette.isOpen()) return;
 
 		try {
@@ -89,15 +99,7 @@ export class PointerEventHandler {
 			// Pointer capture is optional; the page-sized overlay still receives input.
 		}
 		this.activePointerId = e.pointerId;
-		this.state.beginAt(e, this.deps.toolState().tool, () => this.snapshotCurrent());
-		if (this.state.isDrawing()) {
-			this.state.appendDrawingPoint(this.toNormalized(e));
-		}
-		const penHold = this.deps.penHold();
-		if (penHold.enabled) {
-			this.showHoldIndicator(e.clientX, e.clientY, penHold.durationMs);
-			this.longPress.start(e.clientX, e.clientY, penHold.durationMs);
-		}
+		this.beginInputAt(e.clientX, e.clientY, e.pressure);
 		e.preventDefault();
 	}
 
@@ -106,13 +108,14 @@ export class PointerEventHandler {
 			this.twoFingerHold.pointerMove(e.pointerId, e.clientX, e.clientY);
 			return;
 		}
+		if (this.stylusTouchId !== null) return;
 		this.longPress.move(e.clientX, e.clientY);
 		if (this.state.isErasing()) {
-			if (this.eraseAt(e)) this.state.markErased();
+			if (this.eraseAt(e.clientX, e.clientY)) this.state.markErased();
 			e.preventDefault();
 			return;
 		}
-		this.continueDrawingStroke(e);
+		this.continueDrawingAt(e.clientX, e.clientY, e.pressure);
 	}
 
 	private onFinish(e: PointerEvent): void {
@@ -121,6 +124,7 @@ export class PointerEventHandler {
 			this.twoFingerHold.pointerUp(e.pointerId);
 			return;
 		}
+		if (this.stylusTouchId !== null) return;
 		this.longPress.cancel();
 		this.cancelHighlighterRedraw();
 		if (this.state.isErasing()) {
@@ -159,11 +163,25 @@ export class PointerEventHandler {
 		this.openPaletteAt(cx, cy);
 	}
 
-	private continueDrawingStroke(e: PointerEvent): void {
+	private beginInputAt(clientX: number, clientY: number, pressure: number): void {
+		this.state.beginAt(clientX, clientY, this.deps.toolState().tool, () =>
+			this.snapshotCurrent(),
+		);
+		if (this.state.isDrawing()) {
+			this.state.appendDrawingPoint(this.toNormalized(clientX, clientY, pressure));
+		}
+		const penHold = this.deps.penHold();
+		if (penHold.enabled) {
+			this.showHoldIndicator(clientX, clientY, penHold.durationMs);
+			this.longPress.start(clientX, clientY, penHold.durationMs);
+		}
+	}
+
+	private continueDrawingAt(clientX: number, clientY: number, pressure: number): void {
 		if (!this.state.isDrawing()) return;
 		const previous = this.state.lastDrawingPoint();
 		if (!previous) return;
-		const next = this.toNormalized(e);
+		const next = this.toNormalized(clientX, clientY, pressure);
 		this.state.appendDrawingPoint(next);
 		const surface = readCanvasSurface(this.canvas);
 		const tool = this.deps.toolState();
@@ -172,7 +190,6 @@ export class PointerEventHandler {
 		} else {
 			drawSegment(this.ctx, previous, next, tool.color, tool.width, surface);
 		}
-		e.preventDefault();
 	}
 
 	private scheduleHighlighterRedraw(): void {
@@ -225,14 +242,14 @@ export class PointerEventHandler {
 		this.state.reset();
 	}
 
-	private eraseAt(e: PointerEvent): boolean {
+	private eraseAt(clientX: number, clientY: number): boolean {
 		const key = this.canvas.getAttribute(OVERLAY_KEY_ATTR);
 		if (!key) return false;
 		const strokes = this.deps.strokes.forKey(key);
 		if (strokes.length === 0) return false;
 		const rect = this.canvas.getBoundingClientRect();
-		const x = (e.clientX - rect.left) / rect.width;
-		const y = (e.clientY - rect.top) / rect.height;
+		const x = (clientX - rect.left) / rect.width;
+		const y = (clientY - rect.top) / rect.height;
 		const kept: Stroke[] = [];
 		let removed = 0;
 		for (const stroke of strokes) {
@@ -287,13 +304,60 @@ export class PointerEventHandler {
 		this.activePointerId = null;
 	}
 
-	private toNormalized(e: PointerEvent): NormalizedPoint {
+	private toNormalized(clientX: number, clientY: number, pressure: number): NormalizedPoint {
 		const rect = this.canvas.getBoundingClientRect();
 		return {
-			x: (e.clientX - rect.left) / rect.width,
-			y: (e.clientY - rect.top) / rect.height,
-			pressure: e.pressure,
+			x: (clientX - rect.left) / rect.width,
+			y: (clientY - rect.top) / rect.height,
+			pressure,
 		};
+	}
+
+	private onStylusTouchStart(e: TouchEvent): void {
+		if (this.activePointerId !== null || this.stylusTouchId !== null) return;
+		const touch = this.stylusTouchFrom(e.changedTouches);
+		if (!touch) return;
+		this.twoFingerHold.cancel();
+		this.stylusTouchId = touch.identifier;
+		this.beginInputAt(touch.clientX, touch.clientY, touch.force || 0.5);
+		e.preventDefault();
+	}
+
+	private onStylusTouchMove(e: TouchEvent): void {
+		if (this.stylusTouchId === null) return;
+		const touch = this.stylusTouchFrom(e.changedTouches, this.stylusTouchId);
+		if (!touch) return;
+		this.longPress.move(touch.clientX, touch.clientY);
+		if (this.state.isErasing()) {
+			if (this.eraseAt(touch.clientX, touch.clientY)) this.state.markErased();
+		} else {
+			this.continueDrawingAt(touch.clientX, touch.clientY, touch.force || 0.5);
+		}
+		e.preventDefault();
+	}
+
+	private onStylusTouchFinish(e: TouchEvent): void {
+		if (this.stylusTouchId === null) return;
+		const touch = this.stylusTouchFrom(e.changedTouches, this.stylusTouchId);
+		if (!touch) return;
+		this.stylusTouchId = null;
+		this.longPress.cancel();
+		this.cancelHighlighterRedraw();
+		if (this.state.isErasing()) {
+			this.finalizeEraserGesture();
+		} else if (this.state.isDrawing()) {
+			this.finalizeDrawingStroke();
+			window.requestAnimationFrame(() => this.deps.overlays.redrawPage(this.canvas));
+		}
+	}
+
+	private stylusTouchFrom(touches: TouchList, identifier?: number): Touch | null {
+		for (let index = 0; index < touches.length; index++) {
+			const touch = touches.item(index);
+			if (!touch || (identifier !== undefined && touch.identifier !== identifier)) continue;
+			if ((touch as Touch & { touchType?: string }).touchType === 'stylus') return touch;
+		}
+		return null;
 	}
 
 	private blockStylusGesturePreemption(): void {
