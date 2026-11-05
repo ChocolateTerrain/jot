@@ -83,7 +83,11 @@ export class PointerEventHandler {
 		if (e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
 		if (this.deps.palette.isOpen()) return;
 
-		this.canvas.setPointerCapture(e.pointerId);
+		try {
+			this.canvas.setPointerCapture(e.pointerId);
+		} catch {
+			// Pointer capture is optional; the page-sized overlay still receives input.
+		}
 		this.activePointerId = e.pointerId;
 		this.state.beginAt(e, this.deps.toolState().tool, () => this.snapshotCurrent());
 		if (this.state.isDrawing()) {
