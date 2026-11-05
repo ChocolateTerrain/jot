@@ -34,6 +34,7 @@ describe('DockedToolbar', () => {
 		});
 		expect(document.querySelector('.jot-docked-toolbar')).not.toBeNull();
 		expect(document.querySelector('[data-tool="highlighter"]')?.getAttribute('aria-pressed')).toBe('true');
+		expect(document.querySelector('[data-tool="highlighter"]')?.textContent).toContain('Highlighter');
 	});
 
 	it('removes the dock when hidden', () => {

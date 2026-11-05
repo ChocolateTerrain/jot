@@ -14,6 +14,8 @@ export interface CanvasSize {
 export const HIGHLIGHTER_ALPHA = 0.35;
 export const HIGHLIGHTER_WIDTH_FACTOR = 4;
 
+const highlighterMasks = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+
 function denormalize(point: NormalizedPoint, canvas: CanvasSize) {
 	return { x: point.x * canvas.width, y: point.y * canvas.height };
 }
@@ -62,13 +64,67 @@ export function drawHighlighterPolyline(
 	canvas: CanvasSize,
 ) {
 	if (points.length < 2) return;
+	const targetCanvas = ctx.canvas;
+	if (!targetCanvas || !('ownerDocument' in targetCanvas)) {
+		drawHighlighterPath(ctx, points, color, baseWidth, canvas, HIGHLIGHTER_ALPHA);
+		return;
+	}
+	let mask = highlighterMasks.get(targetCanvas);
+	if (!mask) {
+		mask = targetCanvas.ownerDocument.createElement('canvas');
+		highlighterMasks.set(targetCanvas, mask);
+	}
+	if (mask.width !== targetCanvas.width || mask.height !== targetCanvas.height) {
+		mask.width = targetCanvas.width;
+		mask.height = targetCanvas.height;
+	}
+	const maskCtx = mask.getContext('2d');
+	if (!maskCtx) {
+		drawHighlighterPath(ctx, points, color, baseWidth, canvas, HIGHLIGHTER_ALPHA);
+		return;
+	}
+	maskCtx.save();
+	maskCtx.setTransform(1, 0, 0, 1, 0, 0);
+	maskCtx.clearRect(0, 0, mask.width, mask.height);
+	applyDprTransform(maskCtx, canvas);
+	maskCtx.lineWidth = baseWidth * HIGHLIGHTER_WIDTH_FACTOR * canvas.height;
+	maskCtx.strokeStyle = color;
+	maskCtx.lineCap = 'round';
+	maskCtx.lineJoin = 'round';
+	tracePolyline(maskCtx, points, canvas);
+	maskCtx.restore();
+
+	ctx.save();
+	ctx.setTransform(1, 0, 0, 1, 0, 0);
+	ctx.globalAlpha = HIGHLIGHTER_ALPHA;
+	ctx.drawImage(mask, 0, 0);
+	ctx.restore();
+}
+
+function drawHighlighterPath(
+	ctx: CanvasRenderingContext2D,
+	points: NormalizedPoint[],
+	color: string,
+	baseWidth: number,
+	canvas: CanvasSize,
+	alpha: number,
+) {
 	ctx.save();
 	applyDprTransform(ctx, canvas);
 	ctx.lineWidth = baseWidth * HIGHLIGHTER_WIDTH_FACTOR * canvas.height;
 	ctx.strokeStyle = color;
 	ctx.lineCap = 'round';
 	ctx.lineJoin = 'round';
-	ctx.globalAlpha = HIGHLIGHTER_ALPHA;
+	ctx.globalAlpha = alpha;
+	tracePolyline(ctx, points, canvas);
+	ctx.restore();
+}
+
+function tracePolyline(
+	ctx: CanvasRenderingContext2D,
+	points: NormalizedPoint[],
+	canvas: CanvasSize,
+) {
 	ctx.beginPath();
 	const head = denormalize(points[0]!, canvas);
 	ctx.moveTo(head.x, head.y);
@@ -77,7 +133,6 @@ export function drawHighlighterPolyline(
 		ctx.lineTo(next.x, next.y);
 	}
 	ctx.stroke();
-	ctx.restore();
 }
 
 function drawPenPolyline(

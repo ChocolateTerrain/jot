@@ -83,6 +83,11 @@ export class DockedToolbar {
 				this.palette.setTool(tool.id);
 				this.refresh();
 			});
+			button.classList.add('jot-dock-tool');
+			const label = doc.createElement('span');
+			label.className = 'jot-dock-tool-label';
+			label.textContent = tool.label;
+			button.appendChild(label);
 			button.dataset.tool = tool.id;
 			button.setAttribute('aria-pressed', String(state.tool === tool.id));
 			if (state.tool === tool.id) button.classList.add('is-active');

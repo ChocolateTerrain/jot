@@ -112,6 +112,35 @@ describe('drawHighlighterPolyline', () => {
 		expect(ctx.lineWidth).toBe(0.005 * HIGHLIGHTER_WIDTH_FACTOR * 600);
 		expect(ctx.lineCap).toBe('round');
 	});
+	it('composites a self-overlapping highlighter path only once', () => {
+		const maskCtx = makeCtx();
+		const mask = {
+			width: 800,
+			height: 600,
+			getContext: vi.fn(() => maskCtx),
+		} as unknown as HTMLCanvasElement;
+		const targetCanvas = {
+			width: 800,
+			height: 600,
+			ownerDocument: { createElement: vi.fn(() => mask) },
+		};
+		const ctx = Object.assign(makeCtx(), {
+			canvas: targetCanvas,
+			drawImage: vi.fn(),
+		});
+
+		drawHighlighterPolyline(
+			ctx as unknown as CanvasRenderingContext2D,
+			[point(0, 0), point(0.5, 0.5), point(0, 0)],
+			'#ff0',
+			0.005,
+			{ width: 800, height: 600 },
+		);
+
+		expect(maskCtx.stroke).toHaveBeenCalledOnce();
+		expect(ctx.stroke).not.toHaveBeenCalled();
+		expect(ctx.drawImage).toHaveBeenCalledOnce();
+	});
 	it('does nothing for fewer than two points', () => {
 		const ctx = makeCtx();
 		drawHighlighterPolyline(
