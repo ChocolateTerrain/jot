@@ -15,7 +15,7 @@
 	bottom: max(10px, env(safe-area-inset-bottom));
 	transform: translateX(-50%);
 	max-width: calc(100vw - 20px);
-	z-index: 10001;
+	z-index: calc(var(--layer-sidedock, 20) - 1);
 	pointer-events: none;
 	user-select: none;
 }
