@@ -15,6 +15,7 @@ import {
 	strokeIntersects,
 } from './stroke-math';
 import type { StrokeStore } from './stroke-store';
+import { straightenPoints } from './stroke-straighten';
 import { StylusGestureGuard } from './stylus-gesture-guard';
 import { TwoFingerHoldDetector } from './two-finger-hold';
 import type { UndoController } from './undo-controller';
@@ -33,6 +34,7 @@ export interface PointerEventHandlerDeps {
 	toolState: () => ToolState;
 	handedness: () => Handedness;
 	penHold: () => PenHoldSettings;
+	straightenHighlighter?: () => boolean;
 	onHistoryChange?: () => void;
 }
 
@@ -227,8 +229,10 @@ export class PointerEventHandler {
 			if (pdfPath) {
 				this.deps.undo.push({ pdfPath, key, prevStrokes: [...this.deps.strokes.forKey(key)] });
 			}
+			const straighten =
+				tool.tool === 'highlighter' && (this.deps.straightenHighlighter?.() ?? false);
 			this.deps.strokes.appendToKey(key, {
-				points,
+				points: straighten ? straightenPoints(points, rect.width, rect.height) : points,
 				color: tool.color,
 				width: tool.width,
 				tool: tool.tool,

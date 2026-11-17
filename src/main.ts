@@ -193,6 +193,7 @@ export default class JotPlugin extends Plugin {
 				enabled: this.settings.penHoldOpensPalette,
 				durationMs: this.settings.penHoldMs,
 			}),
+			straightenHighlighter: () => this.settings.straightenHighlighter,
 			onHistoryChange: () => this.dockedToolbar?.refresh(),
 		}).attach();
 	}

@@ -17,6 +17,7 @@ export interface JotSettings {
 	handedness: Handedness;
 	penHoldOpensPalette: boolean;
 	penHoldMs: number;
+	straightenHighlighter: boolean;
 	toolState: ToolState;
 	penState: ToolMemory;
 	highlighterState: ToolMemory;
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS: JotSettings = {
 	handedness: 'right',
 	penHoldOpensPalette: true,
 	penHoldMs: PEN_HOLD_MIN_MS,
+	straightenHighlighter: true,
 	toolState: { ...DEFAULT_TOOL_STATE },
 	penState: { ...DEFAULT_PEN_MEMORY },
 	highlighterState: { ...DEFAULT_HIGHLIGHTER_MEMORY },
@@ -89,6 +91,18 @@ export class JotSettingTab extends PluginSettingTab {
 					}),
 			)
 			.setDisabled(!this.plugin.settings.penHoldOpensPalette);
+
+		new Setting(containerEl)
+			.setName('Straighten highlighter strokes')
+			.setDesc(
+				'Turn each highlighter stroke into a straight line when you lift the pen. Nearly flat strokes snap level.',
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.straightenHighlighter).onChange(async (value) => {
+					this.plugin.settings.straightenHighlighter = value;
+					await this.plugin.saveSettings();
+				}),
+			);
 
 		new Setting(containerEl)
 			.setName('Palette colors')
