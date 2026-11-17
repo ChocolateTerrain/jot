@@ -31,9 +31,23 @@ describe('straightenPoints', () => {
 		expect(result[1]!.x).toBeCloseTo(0.1);
 	});
 
-	it('keeps a diagonal stroke diagonal, joining first and last point', () => {
+	it('keeps a diagonal stroke diagonal, along its best-fit line', () => {
 		const result = straightenPoints([p(0.1, 0.1), p(0.25, 0.3), p(0.4, 0.4)], 1000, 1000);
-		expect(result).toEqual([p(0.1, 0.1), p(0.4, 0.4)]);
+		expect(result).toHaveLength(2);
+		expect(result[0]!.x).toBeCloseTo(0.1, 1);
+		expect(result[0]!.y).toBeCloseTo(0.1, 1);
+		expect(result[1]!.x).toBeCloseTo(0.4, 1);
+		expect(result[1]!.y).toBeCloseTo(0.4, 1);
+		const slope = (result[1]!.y - result[0]!.y) / (result[1]!.x - result[0]!.x);
+		expect(slope).toBeGreaterThan(0.8);
+	});
+
+	it('is not tilted by a small flick at the end of a slanted line', () => {
+		const line = Array.from({ length: 30 }, (_, i) => p(0.1 + i * 0.01, 0.1 + i * 0.005));
+		const flick = [...line, p(0.4, 0.23), p(0.405, 0.22)];
+		const result = straightenPoints(flick, 1000, 1000);
+		const slope = (result[1]!.y - result[0]!.y) / (result[1]!.x - result[0]!.x);
+		expect(slope).toBeCloseTo(0.5, 1);
 	});
 
 	it('measures the snap angle in pixels, not normalized units', () => {
@@ -47,7 +61,7 @@ describe('straightenPoints', () => {
 	});
 
 	it('averages pressure and leaves degenerate input alone', () => {
-		expect(straightenPoints([p(0, 0, 0.2), p(1, 0, 0.8)], 10, 10)[0]!.pressure).toBeCloseTo(0.5);
+		expect(straightenPoints([p(0, 0, 0.2), p(1, 0, 0.8)], 100, 100)[0]!.pressure).toBeCloseTo(0.5);
 		const single = [p(0.3, 0.3)];
 		expect(straightenPoints(single, 10, 10)).toBe(single);
 		expect(straightenPoints([], 10, 10)).toEqual([]);
@@ -135,5 +149,40 @@ describe('PointerEventHandler highlighter straightening', () => {
 	it('never straightens pen strokes', () => {
 		const saved = drawWobblyStroke('pen', true);
 		expect(saved[0]!.points.length).toBeGreaterThan(2);
+	});
+});
+
+describe('straightenPoints leaves real shapes alone', () => {
+	const circle = Array.from({ length: 33 }, (_, i) => {
+		const a = (i / 32) * Math.PI * 2;
+		return p(0.5 + 0.1 * Math.cos(a), 0.5 + 0.1 * Math.sin(a));
+	});
+
+	it('keeps a circle', () => {
+		expect(straightenPoints(circle, 1000, 1000)).toBe(circle);
+	});
+
+	it('keeps an arc, a V and a zigzag that doubles back', () => {
+		const arc = Array.from({ length: 11 }, (_, i) => p(0.1 + i * 0.04, 0.5 - 0.1 * Math.sin((i / 10) * Math.PI)));
+		const vee = [p(0.1, 0.1), p(0.2, 0.3), p(0.3, 0.1)];
+		const back = [p(0.1, 0.5), p(0.5, 0.5), p(0.2, 0.5)];
+		expect(straightenPoints(arc, 1000, 1000)).toBe(arc);
+		expect(straightenPoints(vee, 1000, 1000)).toBe(vee);
+		expect(straightenPoints(back, 1000, 1000)).toBe(back);
+	});
+
+	it('keeps a tight zigzag scribbled over a block of text', () => {
+		const zigzag = Array.from({ length: 120 }, (_, i) => p(0.06 + (i / 119) * 0.26, 0.06 + 0.018 * Math.sin((i / 119) * 40)));
+		expect(straightenPoints(zigzag, 1000, 1000)).toBe(zigzag);
+	});
+
+	it('keeps tiny marks', () => {
+		const dot = [p(0.5, 0.5), p(0.503, 0.502), p(0.505, 0.5)];
+		expect(straightenPoints(dot, 1000, 1000)).toBe(dot);
+	});
+
+	it('still straightens a hand-drawn wobbly line', () => {
+		const wobbly = Array.from({ length: 21 }, (_, i) => p(0.1 + i * 0.02, 0.5 + 0.012 * Math.sin(i * 1.7)));
+		expect(straightenPoints(wobbly, 1000, 1000)).toHaveLength(2);
 	});
 });

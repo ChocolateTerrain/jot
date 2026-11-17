@@ -11,6 +11,11 @@ import {
 } from './palette';
 import { PEN_HOLD_MAX_MS, PEN_HOLD_MIN_MS, PEN_HOLD_STEP_MS } from './pen-hold';
 import type JotPlugin from './main';
+import {
+	DEFAULT_TOOL_SIZES,
+	ToolSizes,
+	renderSizeSettings,
+} from './settings-sizes';
 
 export type { Handedness };
 
@@ -27,6 +32,7 @@ export interface JotSettings {
 	penState: ToolMemory;
 	highlighterState: ToolMemory;
 	eraserWidth: number;
+	sizes: ToolSizes;
 	colors: string[];
 }
 
@@ -41,6 +47,11 @@ export const DEFAULT_SETTINGS: JotSettings = {
 	penState: { ...DEFAULT_PEN_MEMORY },
 	highlighterState: { ...DEFAULT_HIGHLIGHTER_MEMORY },
 	eraserWidth: DEFAULT_ERASER_WIDTH,
+	sizes: {
+		pen: [...DEFAULT_TOOL_SIZES.pen],
+		highlighter: [...DEFAULT_TOOL_SIZES.highlighter],
+		eraser: [...DEFAULT_TOOL_SIZES.eraser],
+	},
 	colors: [...PALETTE_COLORS],
 };
 
@@ -104,7 +115,7 @@ export class JotSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Straighten highlighter strokes')
 			.setDesc(
-				'Turn each highlighter stroke into a straight line when you lift the pen. Nearly flat strokes snap level.',
+				'When a highlighter stroke is roughly a line, make it straight when you lift the pen. Nearly flat lines snap level. Circles and other shapes are left as drawn.',
 			)
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.straightenHighlighter).onChange(async (value) => {
@@ -137,6 +148,8 @@ export class JotSettingTab extends PluginSettingTab {
 						this.plugin.refreshDockedToolbar();
 					}),
 			);
+
+		renderSizeSettings(containerEl, this.plugin.sizeSettings);
 
 		new Setting(containerEl)
 			.setName('Palette colors')

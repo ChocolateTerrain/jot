@@ -65,7 +65,6 @@ export const PALETTE_COLORS = [
 export const DEFAULT_ERASER_WIDTH = 0.005;
 
 export const PALETTE_WIDTHS = [0.0015, 0.0025, 0.005, 0.009] as const;
-const MAX_PALETTE_WIDTH = PALETTE_WIDTHS[PALETTE_WIDTHS.length - 1] ?? 0.009;
 
 const PALETTE_CLASS = 'jot-palette';
 
@@ -89,6 +88,8 @@ export interface PaletteHooks {
 	canUndo: () => boolean;
 	canRedo: () => boolean;
 	getColors?: () => string[];
+	/** Size presets for a tool (the four width buttons). */
+	getWidths?: (tool: Tool) => readonly number[];
 }
 
 const SUB_SLOT_OF: Record<Exclude<SubArc, null>, number> = {
@@ -246,7 +247,7 @@ export class Palette {
 		const bounds = arcBounds(this.handedness, this.flipDown, [
 			{ slot: COLOR_SLOT_INDEX, count: this.currentColors().length },
 			{ slot: TOOL_SLOT_INDEX, count: TOOLS.length },
-			{ slot: WIDTH_SLOT_INDEX, count: PALETTE_WIDTHS.length },
+			{ slot: WIDTH_SLOT_INDEX, count: this.currentWidths().length },
 		]);
 		const pad = PALETTE_ITEM_HALF + RADIAL_MARGIN_PX;
 		return {
@@ -372,7 +373,7 @@ export class Palette {
 	private renderWidthSlot(host: HTMLElement, doc: Document, off: Offset) {
 		const btn = this.makeItem(doc, 'jot-palette-width jot-palette-slot', off);
 		btn.setAttribute('aria-label', `Width (current: ${this.state.width})`);
-		btn.appendChild(makeWidthDot(doc, this.state.width));
+		btn.appendChild(makeWidthDot(doc, this.state.width, maxOf(this.currentWidths())));
 		if (this.subArc === 'width') btn.classList.add('is-open');
 		btn.addEventListener('click', () => this.toggleSub('width'));
 		host.appendChild(btn);
@@ -418,6 +419,27 @@ export class Palette {
 		return path;
 	}
 
+	/** The size presets for a tool (defaults to the current tool). */
+	widthsFor(tool: Tool = this.state.tool): readonly number[] {
+		return this.hooks.getWidths?.(tool) ?? PALETTE_WIDTHS;
+	}
+
+	private currentWidths(): readonly number[] {
+		return this.widthsFor();
+	}
+
+	/**
+	 * A size preset changed in settings: if the tool was using the old size,
+	 * move it to the new one so the same button stays selected.
+	 */
+	replaceWidth(tool: Tool, oldWidth: number, newWidth: number): void {
+		const memory = this.memoryFor(tool);
+		if (memory && memory.width === oldWidth) memory.width = newWidth;
+		if (tool === 'eraser' && this.eraserWidth === oldWidth) this.eraserWidth = newWidth;
+		if (this.state.tool === tool && this.state.width === oldWidth) this.state.width = newWidth;
+		this.onChange(this.state);
+	}
+
 	private currentColors(): string[] {
 		return this.hooks.getColors?.() ?? PALETTE_COLORS;
 	}
@@ -425,7 +447,7 @@ export class Palette {
 	private subArcItemCount(): number {
 		if (this.subArc === 'color') return this.currentColors().length;
 		if (this.subArc === 'tool') return TOOLS.length;
-		if (this.subArc === 'width') return PALETTE_WIDTHS.length;
+		if (this.subArc === 'width') return this.currentWidths().length;
 		return 0;
 	}
 
@@ -467,11 +489,13 @@ export class Palette {
 
 	private renderSubWidths(host: HTMLElement, doc: Document) {
 		const subCenter = slotAngle(WIDTH_SLOT_INDEX, this.handedness, this.flipDown);
-		PALETTE_WIDTHS.forEach((width, index) => {
-			const off = this.subSlot(index, PALETTE_WIDTHS.length, subCenter);
+		const widths = this.currentWidths();
+		const max = maxOf(widths);
+		widths.forEach((width, index) => {
+			const off = this.subSlot(index, widths.length, subCenter);
 			const btn = this.makeItem(doc, 'jot-palette-width', off);
 			btn.setAttribute('aria-label', `Width ${width}`);
-			btn.appendChild(makeWidthDot(doc, width));
+			btn.appendChild(makeWidthDot(doc, width, max));
 			btn.addEventListener('click', () => this.applyWidth(width, btn));
 			host.appendChild(btn);
 		});
@@ -506,10 +530,14 @@ function degToRad(deg: number): number {
 	return (deg * Math.PI) / 180;
 }
 
-function makeWidthDot(doc: Document, width: number): HTMLSpanElement {
+export function maxOf(widths: readonly number[]): number {
+	return widths.reduce((max, w) => Math.max(max, w), 0) || 0.009;
+}
+
+function makeWidthDot(doc: Document, width: number, max: number): HTMLSpanElement {
 	const dot = doc.createElement('span');
 	dot.className = 'jot-palette-width-dot';
-	const px = Math.round(4 + (width / MAX_PALETTE_WIDTH) * 14);
+	const px = Math.round(4 + (Math.min(width, max) / max) * 14);
 	dot.style.width = `${px}px`;
 	dot.style.height = `${px}px`;
 	return dot;

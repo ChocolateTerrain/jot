@@ -2,6 +2,7 @@ import { Notice, Plugin, TFile } from 'obsidian';
 import { DEFAULT_TOOL_STATE, Palette, ToolState } from './palette';
 import { DockedToolbar } from './docked-toolbar';
 import { DEFAULT_SETTINGS, JotSettings, JotSettingTab } from './settings';
+import { DEFAULT_TOOL_SIZES, SizeSettingsHost, sanitizeToolSizes } from './settings-sizes';
 import { clampPenHoldMs } from './pen-hold';
 import { ConfirmClearModal } from './clear';
 import { collectClearOperations, countStrokes, toUndoEntries } from './clear-ops';
@@ -29,6 +30,30 @@ export default class JotPlugin extends Plugin {
 	settings: JotSettings = { ...DEFAULT_SETTINGS };
 	private history = new UndoHistory();
 	private undoController!: UndoController;
+
+	/** Used by the settings tab to edit the per-tool size presets. */
+	readonly sizeSettings: SizeSettingsHost = {
+		sizes: () => this.settings.sizes,
+		updateSize: async (tool, index, width) => {
+			const list = this.settings.sizes[tool];
+			const old = list[index];
+			if (old === undefined) return;
+			list[index] = width;
+			this.palette.replaceWidth(tool, old, width);
+			await this.saveSettings();
+		},
+		resetSizes: async () => {
+			for (const tool of ['pen', 'highlighter', 'eraser'] as const) {
+				const list = this.settings.sizes[tool];
+				DEFAULT_TOOL_SIZES[tool].forEach((width, index) => {
+					const old = list[index];
+					if (old !== undefined && old !== width) this.palette.replaceWidth(tool, old, width);
+				});
+				this.settings.sizes[tool] = [...DEFAULT_TOOL_SIZES[tool]];
+			}
+			await this.saveSettings();
+		},
+	};
 
 	async onload() {
 		await this.loadSettings();
@@ -94,6 +119,7 @@ export default class JotPlugin extends Plugin {
 				canUndo: () => this.undoController.canUndo(),
 				canRedo: () => this.undoController.canRedo(),
 				getColors: () => this.settings.colors,
+				getWidths: (tool) => this.settings.sizes[tool],
 			},
 			{
 				pen: this.settings.penState,
@@ -222,6 +248,7 @@ export default class JotPlugin extends Plugin {
 		const stored = (await this.loadData()) as Partial<JotSettings> | null;
 		this.settings = { ...DEFAULT_SETTINGS, ...(stored ?? {}) };
 		this.settings.penHoldMs = clampPenHoldMs(this.settings.penHoldMs);
+		this.settings.sizes = sanitizeToolSizes(stored?.sizes);
 		this.toolState = { ...this.settings.toolState };
 	}
 

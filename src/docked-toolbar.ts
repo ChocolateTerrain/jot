@@ -2,8 +2,8 @@ import { setIcon } from 'obsidian';
 import { OutsideCloseListener } from './outside-close-listener';
 import {
 	PALETTE_COLORS,
-	PALETTE_WIDTHS,
 	Palette,
+	maxOf,
 	PaletteHooks,
 	Tool,
 } from './palette';
@@ -16,7 +16,6 @@ const TOOLS: { id: Tool; icon: string; label: string }[] = [
 
 export type ToolbarPlacement = 'floating' | 'inline';
 
-const MAX_WIDTH = PALETTE_WIDTHS[PALETTE_WIDTHS.length - 1] ?? 0.009;
 
 export class DockedToolbar {
 	private element: HTMLElement | null = null;
@@ -117,7 +116,9 @@ export class DockedToolbar {
 		}
 		toolbar.appendChild(this.separator(doc));
 
-		for (const width of PALETTE_WIDTHS) {
+		const widths = this.palette.widthsFor(state.tool);
+		const maxWidth = maxOf(widths);
+		for (const width of widths) {
 			const button = doc.createElement('button');
 			button.type = 'button';
 			button.className = 'jot-dock-button jot-dock-width';
@@ -125,7 +126,7 @@ export class DockedToolbar {
 			button.setAttribute('aria-label', `Width ${width}`);
 			button.setAttribute('aria-pressed', String(state.width === width));
 			// An SVG circle, like the tool icons, so host button styles can't hide it.
-			const size = Math.round(3 + (width / MAX_WIDTH) * 13);
+			const size = Math.round(3 + (Math.min(width, maxWidth) / maxWidth) * 13);
 			const svgNs = 'http://www.w3.org/2000/svg';
 			const dot = doc.createElementNS(svgNs, 'svg');
 			dot.setAttribute('class', 'jot-dock-width-dot');
