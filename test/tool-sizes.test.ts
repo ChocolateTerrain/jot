@@ -9,9 +9,9 @@ afterEach(() => {
 });
 
 const SIZES: Record<Tool, number[]> = {
-	pen: [0.001, 0.002, 0.003, 0.004],
-	highlighter: [0.004, 0.006, 0.008, 0.01],
-	eraser: [0.005, 0.01, 0.015, 0.02],
+	pen: [0.001, 0.002, 0.003],
+	highlighter: [0.004, 0.006, 0.008],
+	eraser: [0.005, 0.01, 0.015],
 };
 
 function setup() {
@@ -79,13 +79,23 @@ describe('per-tool size presets', () => {
 describe('sanitizeToolSizes', () => {
 	it('keeps valid saved sizes and repairs broken ones', () => {
 		const result = sanitizeToolSizes({
-			pen: [0.001, 0.002, 0.003, 0.004],
-			highlighter: [0.001, 'x', 0.003, 0.004],
+			pen: [0.002, 0.003, 0.004],
+			highlighter: [0.001, 'x', 0.003],
 			eraser: [0.001],
 		});
-		expect(result.pen).toEqual([0.001, 0.002, 0.003, 0.004]);
+		expect(result.pen).toEqual([0.002, 0.003, 0.004]);
 		expect(result.highlighter).toEqual(DEFAULT_TOOL_SIZES.highlighter);
 		expect(result.eraser).toEqual(DEFAULT_TOOL_SIZES.eraser);
+	});
+
+	it('converts four saved sizes from older versions by dropping the thinnest', () => {
+		const result = sanitizeToolSizes({ pen: [0.001, 0.002, 0.003, 0.004] });
+		expect(result.pen).toEqual([0.002, 0.003, 0.004]);
+	});
+
+	it('has three sizes per tool by default', () => {
+		expect(DEFAULT_TOOL_SIZES.pen).toHaveLength(3);
+		expect(PALETTE_WIDTHS).toHaveLength(3);
 	});
 
 	it('uses defaults when nothing is saved', () => {
@@ -146,5 +156,20 @@ describe('toolbar size pop-up', () => {
 		expect(setWidthPreset).not.toHaveBeenCalled();
 		expect(palette.getState().width).toBe(0.005);
 		toolbar.hide();
+	});
+});
+
+describe('eraser hides color controls', () => {
+	it('shows colors for pen and highlighter, hides them for the eraser', () => {
+		const { palette, toolbar } = setup();
+		const colorCount = () => document.querySelectorAll('.jot-docked-toolbar .jot-dock-color').length;
+		expect(colorCount()).toBeGreaterThan(0);
+		palette.setTool('eraser');
+		toolbar.refresh();
+		expect(colorCount()).toBe(0);
+		expect(document.querySelectorAll('.jot-dock-width')).toHaveLength(3);
+		palette.setTool('highlighter');
+		toolbar.refresh();
+		expect(colorCount()).toBeGreaterThan(0);
 	});
 });

@@ -149,8 +149,16 @@ export class DockedToolbar {
 		);
 		sizeMore.classList.add('jot-dock-more');
 		toolbar.appendChild(sizeMore);
-		toolbar.appendChild(this.separator(doc));
 
+		// Color doesn't apply to the eraser, so its controls are hidden then.
+		if (state.tool !== 'eraser') {
+			toolbar.appendChild(this.separator(doc));
+			this.renderColors(doc, toolbar, state.color);
+		}
+		host.appendChild(toolbar);
+	}
+
+	private renderColors(doc: Document, toolbar: HTMLElement, selected: string): void {
 		const colors = this.hooks.getColors?.() ?? PALETTE_COLORS;
 		for (const color of colors) {
 			const button = doc.createElement('button');
@@ -159,8 +167,8 @@ export class DockedToolbar {
 			button.dataset.color = color;
 			button.style.setProperty('background-color', color, 'important');
 			button.setAttribute('aria-label', `Color ${color}`);
-			button.setAttribute('aria-pressed', String(state.color === color));
-			if (state.color === color) button.classList.add('is-active');
+			button.setAttribute('aria-pressed', String(selected === color));
+			if (selected === color) button.classList.add('is-active');
 			button.addEventListener('click', () => {
 				this.palette.setColor(color);
 				this.refresh();
@@ -173,7 +181,7 @@ export class DockedToolbar {
 		const current = doc.createElement('button');
 		current.type = 'button';
 		current.className = 'jot-dock-button jot-dock-color jot-dock-color-current';
-		current.style.setProperty('background-color', state.color, 'important');
+		current.style.setProperty('background-color', selected, 'important');
 		current.setAttribute('aria-label', 'Choose color');
 		current.addEventListener('click', () =>
 			this.popover.toggle('color', current, 'jot-dock-color-popover', (popover) =>
@@ -185,7 +193,6 @@ export class DockedToolbar {
 			),
 		);
 		toolbar.appendChild(current);
-		host.appendChild(toolbar);
 	}
 
 	private toggleSizePopover(anchor: HTMLElement): void {

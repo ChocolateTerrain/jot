@@ -1,7 +1,7 @@
 import { Setting, SliderComponent } from 'obsidian';
 import { PALETTE_WIDTHS, Tool } from './palette';
 
-/** The four size presets for each tool, as fractions of page height. */
+/** The three size presets for each tool, as fractions of page height. */
 export type ToolSizes = Record<Tool, number[]>;
 
 export const DEFAULT_TOOL_SIZES: ToolSizes = {
@@ -23,7 +23,10 @@ const TOOL_LABELS: { tool: Tool; label: string }[] = [
 	{ tool: 'eraser', label: 'Eraser' },
 ];
 
-/** Repair sizes loaded from disk: exactly four positive numbers per tool. */
+/**
+ * Repair sizes loaded from disk: three positive numbers per tool. Older
+ * versions saved four; keep the three largest (drop the thinnest).
+ */
 export function sanitizeToolSizes(stored: unknown): ToolSizes {
 	const result: ToolSizes = {
 		pen: [...DEFAULT_TOOL_SIZES.pen],
@@ -32,8 +35,11 @@ export function sanitizeToolSizes(stored: unknown): ToolSizes {
 	};
 	if (!stored || typeof stored !== 'object') return result;
 	for (const { tool } of TOOL_LABELS) {
-		const list = (stored as Record<string, unknown>)[tool];
-		if (!Array.isArray(list) || list.length !== PALETTE_WIDTHS.length) continue;
+		const raw = (stored as Record<string, unknown>)[tool];
+		if (!Array.isArray(raw)) continue;
+		let list: unknown[] = raw;
+		if (list.length === PALETTE_WIDTHS.length + 1) list = list.slice(1);
+		if (list.length !== PALETTE_WIDTHS.length) continue;
 		if (list.every((w) => typeof w === 'number' && w > 0 && w < 1)) {
 			result[tool] = [...(list as number[])];
 		}
@@ -51,7 +57,7 @@ export function renderSizeSettings(containerEl: HTMLElement, host: SizeSettingsH
 	new Setting(containerEl)
 		.setName('Tool sizes')
 		.setDesc(
-			'The four size buttons for each tool. Larger numbers draw thicker lines, or a bigger eraser.',
+			'The three size buttons for each tool. Larger numbers draw thicker lines, or a bigger eraser.',
 		)
 		.setHeading();
 

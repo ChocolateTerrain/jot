@@ -64,7 +64,7 @@ export const PALETTE_COLORS = [
 
 export const DEFAULT_ERASER_WIDTH = 0.005;
 
-export const PALETTE_WIDTHS = [0.0015, 0.0025, 0.005, 0.009] as const;
+export const PALETTE_WIDTHS = [0.0025, 0.005, 0.009] as const;
 
 const PALETTE_CLASS = 'jot-palette';
 
