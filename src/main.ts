@@ -84,6 +84,7 @@ export default class JotPlugin extends Plugin {
 				const mem = this.palette.getMemory();
 				this.settings.penState = mem.pen;
 				this.settings.highlighterState = mem.highlighter;
+				this.settings.eraserWidth = mem.eraserWidth;
 				void this.saveSettings();
 				this.dockedToolbar?.refresh();
 			},
@@ -97,6 +98,7 @@ export default class JotPlugin extends Plugin {
 			{
 				pen: this.settings.penState,
 				highlighter: this.settings.highlighterState,
+				eraserWidth: this.settings.eraserWidth,
 			},
 		);
 		this.dockedToolbar = new DockedToolbar(this.palette, {

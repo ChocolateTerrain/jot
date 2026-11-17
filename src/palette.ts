@@ -62,6 +62,8 @@ export const PALETTE_COLORS = [
 	'#ffffff',
 ];
 
+export const DEFAULT_ERASER_WIDTH = 0.005;
+
 export const PALETTE_WIDTHS = [0.0015, 0.0025, 0.005, 0.009] as const;
 const MAX_PALETTE_WIDTH = PALETTE_WIDTHS[PALETTE_WIDTHS.length - 1] ?? 0.009;
 
@@ -121,12 +123,14 @@ export class Palette {
 	private handedness: Handedness = 'right';
 	private penMemory: ToolMemory = { ...DEFAULT_PEN_MEMORY };
 	private highlighterMemory: ToolMemory = { ...DEFAULT_HIGHLIGHTER_MEMORY };
+	/** The eraser only remembers its size; it keeps whatever color is selected. */
+	private eraserWidth = DEFAULT_ERASER_WIDTH;
 
 	constructor(
 		initial: ToolState,
 		onChange: OnChange,
 		hooks: PaletteHooks,
-		memory?: { pen?: ToolMemory; highlighter?: ToolMemory },
+		memory?: { pen?: ToolMemory; highlighter?: ToolMemory; eraserWidth?: number },
 	) {
 		this.state = { ...initial };
 		this.onChange = onChange;
@@ -138,17 +142,21 @@ export class Palette {
 		this.confirmAnimator = new ConfirmAnimator(() => this.hide());
 		if (memory?.pen) this.penMemory = { ...memory.pen };
 		if (memory?.highlighter) this.highlighterMemory = { ...memory.highlighter };
+		if (memory?.eraserWidth) this.eraserWidth = memory.eraserWidth;
 		if (initial.tool === 'pen') {
 			this.penMemory = { color: initial.color, width: initial.width };
 		} else if (initial.tool === 'highlighter') {
 			this.highlighterMemory = { color: initial.color, width: initial.width };
+		} else if (initial.tool === 'eraser') {
+			this.eraserWidth = initial.width;
 		}
 	}
 
-	getMemory(): { pen: ToolMemory; highlighter: ToolMemory } {
+	getMemory(): { pen: ToolMemory; highlighter: ToolMemory; eraserWidth: number } {
 		return {
 			pen: { ...this.penMemory },
 			highlighter: { ...this.highlighterMemory },
+			eraserWidth: this.eraserWidth,
 		};
 	}
 
@@ -162,6 +170,8 @@ export class Palette {
 		if (memory) {
 			this.state.color = memory.color;
 			this.state.width = memory.width;
+		} else if (tool === 'eraser') {
+			this.state.width = this.eraserWidth;
 		}
 		this.onChange(this.state);
 	}
@@ -177,6 +187,7 @@ export class Palette {
 		this.state.width = width;
 		const memory = this.memoryFor(this.state.tool);
 		if (memory) memory.width = width;
+		else if (this.state.tool === 'eraser') this.eraserWidth = width;
 		this.onChange(this.state);
 	}
 

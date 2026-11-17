@@ -1,23 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import type { NormalizedPoint, Stroke } from '../src/stroke-math';
+import type { NormalizedPoint } from '../src/stroke-math';
 import {
 	PRESSURE_MAX_FACTOR,
 	PRESSURE_MIN_FACTOR,
 	forEachSmoothSegment,
 	midpoint,
-	strokeIntersects,
 	subdivideQuadratic,
 	widthFactorForPressure,
 } from '../src/stroke-math';
 
 const point = (x: number, y: number, pressure = 0.5): NormalizedPoint => ({ x, y, pressure });
-
-const pen = (points: NormalizedPoint[]): Stroke => ({
-	points,
-	color: '#000',
-	width: 0.01,
-	tool: 'pen',
-});
 
 const collectPairs = (
 	run: (emit: (a: NormalizedPoint, b: NormalizedPoint) => void) => void,
@@ -126,20 +118,5 @@ describe('forEachSmoothSegment', () => {
 		for (let i = 1; i < pairs.length; i++) {
 			expect(pairs[i]![0]).toEqual(pairs[i - 1]![1]);
 		}
-	});
-});
-
-describe('strokeIntersects', () => {
-	it('returns true when any point lies inside the radius', () => {
-		expect(strokeIntersects(pen([point(0.5, 0.5)]), 0.5, 0.5, 0.1)).toBe(true);
-	});
-	it('returns false when no point is inside the radius', () => {
-		expect(strokeIntersects(pen([point(0, 0)]), 1, 1, 0.1)).toBe(false);
-	});
-	it('returns false for a point clearly beyond the radius', () => {
-		expect(strokeIntersects(pen([point(0.71, 0.5)]), 0.5, 0.5, 0.1)).toBe(false);
-	});
-	it('returns false for an empty stroke', () => {
-		expect(strokeIntersects(pen([]), 0.5, 0.5, 0.1)).toBe(false);
 	});
 });

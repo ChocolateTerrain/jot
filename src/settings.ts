@@ -1,5 +1,6 @@
 import { App, ColorComponent, PluginSettingTab, Setting } from 'obsidian';
 import {
+	DEFAULT_ERASER_WIDTH,
 	DEFAULT_HIGHLIGHTER_MEMORY,
 	DEFAULT_PEN_MEMORY,
 	DEFAULT_TOOL_STATE,
@@ -25,6 +26,7 @@ export interface JotSettings {
 	toolState: ToolState;
 	penState: ToolMemory;
 	highlighterState: ToolMemory;
+	eraserWidth: number;
 	colors: string[];
 }
 
@@ -38,6 +40,7 @@ export const DEFAULT_SETTINGS: JotSettings = {
 	toolState: { ...DEFAULT_TOOL_STATE },
 	penState: { ...DEFAULT_PEN_MEMORY },
 	highlighterState: { ...DEFAULT_HIGHLIGHTER_MEMORY },
+	eraserWidth: DEFAULT_ERASER_WIDTH,
 	colors: [...PALETTE_COLORS],
 };
 

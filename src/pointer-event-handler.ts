@@ -8,12 +8,8 @@ import { OVERLAY_KEY_ATTR, OverlayManager } from './overlay-manager';
 import type { PenHoldSettings } from './pen-hold';
 import { PenStrokeState } from './pen-stroke-state';
 import type { SidecarStore } from './sidecar-store';
-import {
-	ERASE_RADIUS,
-	NormalizedPoint,
-	Stroke,
-	strokeIntersects,
-} from './stroke-math';
+import type { NormalizedPoint } from './stroke-math';
+import { eraseAlongPath, eraserRadiusFor } from './stroke-erase';
 import type { StrokeStore } from './stroke-store';
 import { straightenPoints } from './stroke-straighten';
 import { StylusGestureGuard } from './stylus-gesture-guard';
@@ -54,6 +50,10 @@ export class PointerEventHandler {
 	private longPress: LongPressDetector;
 	private twoFingerHold: TwoFingerHoldDetector;
 	private twoFingerTap: TwoFingerDoubleTapDetector;
+	private eraserCursor: HTMLElement | null = null;
+	/** Last eraser position (normalized) this gesture, and whether it has moved. */
+	private lastErase: { x: number; y: number } | null = null;
+	private eraserMoved = false;
 
 	constructor(
 		private canvas: HTMLCanvasElement,
@@ -100,6 +100,9 @@ export class PointerEventHandler {
 		this.canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
 		this.canvas.addEventListener('pointerup', (e) => this.onFinish(e));
 		this.canvas.addEventListener('pointercancel', (e) => this.onFinish(e));
+		this.canvas.addEventListener('pointerleave', () => {
+			if (!this.state.isErasing()) this.hideEraserCursor();
+		});
 	}
 
 	private onPointerDown(e: PointerEvent): void {
@@ -128,9 +131,18 @@ export class PointerEventHandler {
 			return;
 		}
 		if (this.stylusTouchId !== null) return;
+		if (!this.state.isBusy()) {
+			// Apple Pencil hover (or a mouse) over the page: preview the eraser size.
+			if (this.deps.toolState().tool === 'eraser' && !this.deps.palette.isOpen()) {
+				this.showEraserCursor(e.clientX, e.clientY);
+			} else {
+				this.hideEraserCursor();
+			}
+			return;
+		}
 		this.longPress.move(e.clientX, e.clientY);
 		if (this.state.isErasing()) {
-			if (this.eraseAt(e.clientX, e.clientY)) this.state.markErased();
+			this.eraseMoveTo(e.clientX, e.clientY);
 			e.preventDefault();
 			return;
 		}
@@ -159,6 +171,8 @@ export class PointerEventHandler {
 
 	private onLongPressFire(): void {
 		this.removeHoldIndicator();
+		this.hideEraserCursor();
+		this.lastErase = null;
 		this.destroyDrawingPreview();
 		const { clientX, clientY } = this.state.pressedAt;
 		this.state.reset();
@@ -197,6 +211,12 @@ export class PointerEventHandler {
 			this.state.appendDrawingPoint(this.toNormalized(clientX, clientY, pressure));
 			this.drawingPreview = DrawingPreview.create(this.canvas, this.deps.toolState().tool);
 		}
+		if (this.state.isErasing()) {
+			const p = this.toNormalized(clientX, clientY, 0);
+			this.lastErase = { x: p.x, y: p.y };
+			this.eraserMoved = false;
+			this.showEraserCursor(clientX, clientY);
+		}
 		const penHold = this.deps.penHold();
 		if (penHold.enabled) {
 			this.showHoldIndicator(clientX, clientY, penHold.durationMs);
@@ -226,6 +246,12 @@ export class PointerEventHandler {
 	}
 
 	private finalizeEraserGesture(): void {
+		// A tap without moving erases under the pencil too.
+		if (!this.eraserMoved && this.lastErase && this.eraseSegment(null, this.lastErase)) {
+			this.state.markErased();
+		}
+		this.lastErase = null;
+		this.hideEraserCursor();
 		const snapshot = this.state.takeEraserSnapshot();
 		if (snapshot) this.deps.undo.push(snapshot);
 		this.state.reset();
@@ -267,25 +293,34 @@ export class PointerEventHandler {
 		this.deps.onHistoryChange?.();
 	}
 
-	private eraseAt(clientX: number, clientY: number): boolean {
+	private eraseMoveTo(clientX: number, clientY: number): void {
+		this.longPress.move(clientX, clientY);
+		this.showEraserCursor(clientX, clientY);
+		const p = this.toNormalized(clientX, clientY, 0);
+		const to = { x: p.x, y: p.y };
+		if (this.eraseSegment(this.lastErase, to)) this.state.markErased();
+		this.lastErase = to;
+		this.eraserMoved = true;
+	}
+
+	private eraserRadiusPx(): number {
+		const rect = this.canvas.getBoundingClientRect();
+		return eraserRadiusFor(this.deps.toolState().width) * rect.height;
+	}
+
+	/** Cut away everything under the eraser between two normalized positions. */
+	private eraseSegment(from: { x: number; y: number } | null, to: { x: number; y: number }): boolean {
 		const key = this.canvas.getAttribute(OVERLAY_KEY_ATTR);
 		if (!key) return false;
 		const strokes = this.deps.strokes.forKey(key);
 		if (strokes.length === 0) return false;
 		const rect = this.canvas.getBoundingClientRect();
-		const x = (clientX - rect.left) / rect.width;
-		const y = (clientY - rect.top) / rect.height;
-		const kept: Stroke[] = [];
-		let removed = 0;
-		for (const stroke of strokes) {
-			if (strokeIntersects(stroke, x, y, ERASE_RADIUS)) {
-				removed += 1;
-			} else {
-				kept.push(stroke);
-			}
-		}
-		if (removed === 0) return false;
-		this.deps.strokes.setForKey(key, kept);
+		const next = eraseAlongPath(strokes, from, to, this.eraserRadiusPx(), {
+			width: rect.width,
+			height: rect.height,
+		});
+		if (!next) return false;
+		this.deps.strokes.setForKey(key, next);
 		this.deps.overlays.redrawPage(this.canvas);
 		const pdfPath = pdfPathFromKey(key);
 		if (pdfPath) this.deps.sidecar.scheduleSave(pdfPath);
@@ -317,6 +352,24 @@ export class PointerEventHandler {
 	private removeTwoFingerIndicator(): void {
 		this.twoFingerIndicator?.remove();
 		this.twoFingerIndicator = null;
+	}
+
+	private showEraserCursor(clientX: number, clientY: number): void {
+		const r = this.eraserRadiusPx();
+		if (!this.eraserCursor) {
+			this.eraserCursor = activeDocument.createElement('div');
+			this.eraserCursor.className = 'jot-eraser-cursor';
+			activeDocument.body.appendChild(this.eraserCursor);
+		}
+		const style = this.eraserCursor.style;
+		style.width = `${2 * r}px`;
+		style.height = `${2 * r}px`;
+		style.transform = `translate(${clientX - r}px, ${clientY - r}px)`;
+	}
+
+	private hideEraserCursor(): void {
+		this.eraserCursor?.remove();
+		this.eraserCursor = null;
 	}
 
 	private releasePointerCapture(): void {
@@ -354,7 +407,7 @@ export class PointerEventHandler {
 		if (!touch) return;
 		this.longPress.move(touch.clientX, touch.clientY);
 		if (this.state.isErasing()) {
-			if (this.eraseAt(touch.clientX, touch.clientY)) this.state.markErased();
+			this.eraseMoveTo(touch.clientX, touch.clientY);
 		} else {
 			this.continueDrawingAt(touch.clientX, touch.clientY, touch.force || 0.5);
 		}

@@ -17,7 +17,6 @@ export type SegmentEmit = (a: NormalizedPoint, b: NormalizedPoint) => void;
 
 export const PRESSURE_MIN_FACTOR = 0.5;
 export const PRESSURE_MAX_FACTOR = 1.8;
-export const ERASE_RADIUS = 0.02;
 export const SMOOTH_SUBDIVISIONS = 6;
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
@@ -82,13 +81,4 @@ export function forEachSmoothSegment(points: NormalizedPoint[], emit: SegmentEmi
 		previousMidpoint = nextMidpoint;
 	}
 	emit(previousMidpoint, points[points.length - 1]!);
-}
-
-export function strokeIntersects(stroke: Stroke, x: number, y: number, radius: number): boolean {
-	const radiusSquared = radius * radius;
-	return stroke.points.some((point) => {
-		const dx = point.x - x;
-		const dy = point.y - y;
-		return dx * dx + dy * dy < radiusSquared;
-	});
 }
