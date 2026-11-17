@@ -92,3 +92,59 @@ describe('sanitizeToolSizes', () => {
 		expect(sanitizeToolSizes(undefined)).toEqual(DEFAULT_TOOL_SIZES);
 	});
 });
+
+describe('toolbar size pop-up', () => {
+	function open(state: { tool: Tool; width: number }) {
+		const setWidthPreset = vi.fn();
+		const hooks = {
+			onUndo: vi.fn(),
+			onRedo: vi.fn(),
+			canUndo: () => false,
+			canRedo: () => false,
+			getWidths: (tool: Tool) => SIZES[tool],
+			setWidthPreset,
+		};
+		const palette = new Palette({ ...DEFAULT_TOOL_STATE, ...state }, () => {}, hooks);
+		const toolbar = new DockedToolbar(palette, hooks);
+		toolbar.show(document.body, 'inline');
+		document.querySelector<HTMLButtonElement>('.jot-dock-more')!.click();
+		const popover = document.querySelector<HTMLElement>('.jot-dock-size-popover');
+		const slider = popover?.querySelector<HTMLInputElement>('input[type="range"]') ?? null;
+		return { palette, toolbar, popover, slider, setWidthPreset };
+	}
+
+	it('opens from the ▾ next to the sizes with the selected size', () => {
+		const { popover, slider, toolbar } = open({ tool: 'highlighter', width: 0.006 });
+		expect(popover?.textContent).toContain('Highlighter size 2');
+		expect(slider?.value).toBe('6');
+		toolbar.hide();
+		expect(document.querySelector('.jot-dock-size-popover')).toBeNull();
+	});
+
+	it('updates the preview and value while dragging, and saves the preset on release', () => {
+		const { popover, slider, setWidthPreset, toolbar } = open({ tool: 'pen', width: 0.003 });
+		slider!.value = '7.5';
+		slider!.dispatchEvent(new Event('input'));
+		expect(popover!.querySelector('.jot-dock-size-value')?.textContent).toBe('7.5');
+		expect(popover!.querySelector('line')?.getAttribute('stroke-width')).toBe(String(0.0075 * 1.15 * 400));
+		expect(setWidthPreset).not.toHaveBeenCalled();
+		slider!.dispatchEvent(new Event('change'));
+		expect(setWidthPreset).toHaveBeenCalledWith('pen', 2, 0.0075);
+		toolbar.hide();
+	});
+
+	it('shows an eraser circle preview', () => {
+		const { popover, toolbar } = open({ tool: 'eraser', width: 0.01 });
+		expect(popover!.querySelector('circle')).not.toBeNull();
+		toolbar.hide();
+	});
+
+	it('just sets the width when the current size is not one of the buttons', () => {
+		const { palette, slider, setWidthPreset, toolbar } = open({ tool: 'pen', width: 0.0033 });
+		slider!.value = '5';
+		slider!.dispatchEvent(new Event('change'));
+		expect(setWidthPreset).not.toHaveBeenCalled();
+		expect(palette.getState().width).toBe(0.005);
+		toolbar.hide();
+	});
+});

@@ -1,5 +1,5 @@
 import { setIcon } from 'obsidian';
-import { OutsideCloseListener } from './outside-close-listener';
+import { ToolbarPopover, fillColorGrid, fillSizeSlider } from './toolbar-popover';
 import {
 	PALETTE_COLORS,
 	Palette,
@@ -20,12 +20,7 @@ export type ToolbarPlacement = 'floating' | 'inline';
 export class DockedToolbar {
 	private element: HTMLElement | null = null;
 	private placement: ToolbarPlacement = 'floating';
-	private popover: HTMLElement | null = null;
-	private popoverClosedAt = 0;
-	private outsideClose = new OutsideCloseListener(
-		() => this.popover,
-		() => this.closeColorPopover(),
-	);
+	private popover = new ToolbarPopover();
 
 	constructor(
 		private palette: Palette,
@@ -54,7 +49,7 @@ export class DockedToolbar {
 	}
 
 	hide(): void {
-		this.closeColorPopover();
+		this.popover.close();
 		this.element?.remove();
 		this.element = null;
 	}
@@ -149,6 +144,11 @@ export class DockedToolbar {
 			if (state.width === width) button.classList.add('is-active');
 			toolbar.appendChild(button);
 		}
+		const sizeMore = this.iconButton(doc, 'chevron-down', 'Adjust size', () =>
+			this.toggleSizePopover(sizeMore),
+		);
+		sizeMore.classList.add('jot-dock-more');
+		toolbar.appendChild(sizeMore);
 		toolbar.appendChild(this.separator(doc));
 
 		const colors = this.hooks.getColors?.() ?? PALETTE_COLORS;
@@ -175,51 +175,39 @@ export class DockedToolbar {
 		current.className = 'jot-dock-button jot-dock-color jot-dock-color-current';
 		current.style.setProperty('background-color', state.color, 'important');
 		current.setAttribute('aria-label', 'Choose color');
-		current.addEventListener('click', () => this.toggleColorPopover(current, colors));
+		current.addEventListener('click', () =>
+			this.popover.toggle('color', current, 'jot-dock-color-popover', (popover) =>
+				fillColorGrid(popover, colors, this.palette.getState().color, (color) => {
+					this.palette.setColor(color);
+					this.popover.close();
+					this.refresh();
+				}),
+			),
+		);
 		toolbar.appendChild(current);
 		host.appendChild(toolbar);
 	}
 
-	private toggleColorPopover(anchor: HTMLElement, colors: readonly string[]): void {
-		if (this.popover) {
-			this.closeColorPopover();
-			return;
-		}
-		// The outside-tap listener already closed it on this same tap.
-		if (Date.now() - this.popoverClosedAt < 300) return;
-		const doc = anchor.ownerDocument;
-		const popover = doc.createElement('div');
-		popover.className = 'jot-dock-color-popover';
-		const rect = anchor.getBoundingClientRect();
-		popover.style.top = `${Math.round(rect.bottom + 6)}px`;
-		popover.style.right = `${Math.max(8, Math.round(doc.documentElement.clientWidth - rect.right))}px`;
-		const selected = this.palette.getState().color;
-		for (const color of colors) {
-			const button = doc.createElement('button');
-			button.type = 'button';
-			button.className = 'jot-dock-button jot-dock-color';
-			button.dataset.color = color;
-			button.style.setProperty('background-color', color, 'important');
-			button.setAttribute('aria-label', `Color ${color}`);
-			if (color === selected) button.classList.add('is-active');
-			button.addEventListener('click', () => {
-				this.palette.setColor(color);
-				this.closeColorPopover();
-				this.refresh();
+	private toggleSizePopover(anchor: HTMLElement): void {
+		this.popover.toggle('size', anchor, 'jot-dock-size-popover', (popover) => {
+			const state = this.palette.getState();
+			const presetIndex = this.palette.widthsFor(state.tool).indexOf(state.width);
+			fillSizeSlider(popover, {
+				tool: state.tool,
+				presetIndex,
+				width: state.width,
+				color: state.color,
+				onCommit: (width) => {
+					if (presetIndex >= 0 && this.hooks.setWidthPreset) {
+						// Changes that size button for good, same as in settings.
+						void this.hooks.setWidthPreset(state.tool, presetIndex, width);
+					} else {
+						this.palette.setWidth(width);
+					}
+					this.refresh();
+				},
 			});
-			popover.appendChild(button);
-		}
-		doc.body.appendChild(popover);
-		this.popover = popover;
-		this.outsideClose.attach(doc);
-	}
-
-	private closeColorPopover(): void {
-		if (!this.popover) return;
-		this.outsideClose.detach();
-		this.popover.remove();
-		this.popover = null;
-		this.popoverClosedAt = Date.now();
+		});
 	}
 
 	private iconButton(

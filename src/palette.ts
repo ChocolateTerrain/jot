@@ -90,6 +90,8 @@ export interface PaletteHooks {
 	getColors?: () => string[];
 	/** Size presets for a tool (the four width buttons). */
 	getWidths?: (tool: Tool) => readonly number[];
+	/** Change one of a tool's size presets (from the toolbar's size slider). */
+	setWidthPreset?: (tool: Tool, index: number, width: number) => void | Promise<void>;
 }
 
 const SUB_SLOT_OF: Record<Exclude<SubArc, null>, number> = {

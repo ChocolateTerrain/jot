@@ -133,6 +133,7 @@ export default class JotPlugin extends Plugin {
 			canUndo: () => this.undoController.canUndo(),
 			canRedo: () => this.undoController.canRedo(),
 			getColors: () => this.settings.colors,
+			setWidthPreset: (tool, index, width) => this.sizeSettings.updateSize(tool, index, width),
 		});
 
 		this.registerEvent(

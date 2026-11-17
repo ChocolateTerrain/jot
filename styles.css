@@ -243,17 +243,75 @@
 	}
 }
 
-.jot-dock-color-popover {
+.jot-dock-popover {
 	position: fixed;
 	z-index: var(--layer-popover, 30);
-	display: grid;
-	grid-template-columns: repeat(4, 38px);
-	gap: 8px;
 	padding: 10px;
 	border: 1px solid var(--background-modifier-border, #555);
 	border-radius: 12px;
 	background: var(--background-secondary, #30343b);
+	color: var(--text-normal, #eee);
 	box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+}
+
+.jot-dock-color-popover {
+	display: grid;
+	grid-template-columns: repeat(4, 38px);
+	gap: 8px;
+}
+
+.jot-dock-size-popover {
+	width: 240px;
+	max-width: calc(100vw - 16px);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px 14px;
+}
+
+.jot-dock-size-header {
+	display: flex;
+	justify-content: space-between;
+	font-size: 13px;
+}
+
+.jot-dock-size-value {
+	font-variant-numeric: tabular-nums;
+	color: var(--text-muted, #aaa);
+}
+
+.jot-dock-size-preview {
+	display: block;
+	width: 100%;
+	height: 64px;
+	border-radius: 8px;
+	background: #fff;
+}
+
+.jot-dock-size-preview-eraser {
+	fill: rgba(0, 0, 0, 0.06);
+	stroke: rgba(0, 0, 0, 0.7);
+	stroke-width: 1.5;
+}
+
+.jot-dock-size-slider {
+	width: 100%;
+	margin: 4px 0;
+}
+
+/* The ▾ next to the size buttons. */
+.jot-docked-toolbar .jot-docked-toolbar-controls button.jot-dock-more {
+	width: 20px !important;
+	flex: 0 0 20px !important;
+	color: var(--text-muted, #aaa) !important;
+}
+
+.jot-docked-toolbar .jot-docked-toolbar-controls button.jot-dock-more > svg {
+	width: 16px !important;
+	height: 16px !important;
+	min-width: 16px;
+	min-height: 16px;
+	flex-basis: 16px;
 }
 
 .jot-dock-color-popover button.jot-dock-color {
