@@ -13,11 +13,15 @@ import type JotPlugin from './main';
 
 export type { Handedness };
 
+export type ToolbarPosition = 'top' | 'bottom';
+
 export interface JotSettings {
 	handedness: Handedness;
 	penHoldOpensPalette: boolean;
 	penHoldMs: number;
 	straightenHighlighter: boolean;
+	twoFingerDoubleTapUndo: boolean;
+	toolbarPosition: ToolbarPosition;
 	toolState: ToolState;
 	penState: ToolMemory;
 	highlighterState: ToolMemory;
@@ -29,6 +33,8 @@ export const DEFAULT_SETTINGS: JotSettings = {
 	penHoldOpensPalette: true,
 	penHoldMs: PEN_HOLD_MIN_MS,
 	straightenHighlighter: true,
+	twoFingerDoubleTapUndo: true,
+	toolbarPosition: 'top',
 	toolState: { ...DEFAULT_TOOL_STATE },
 	penState: { ...DEFAULT_PEN_MEMORY },
 	highlighterState: { ...DEFAULT_HIGHLIGHTER_MEMORY },
@@ -102,6 +108,31 @@ export class JotSettingTab extends PluginSettingTab {
 					this.plugin.settings.straightenHighlighter = value;
 					await this.plugin.saveSettings();
 				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Two-finger double tap to undo')
+			.setDesc('Double tap with two fingers to remove the last stroke.')
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.twoFingerDoubleTapUndo).onChange(async (value) => {
+					this.plugin.settings.twoFingerDoubleTapUndo = value;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName('Toolbar position')
+			.setDesc('Show the annotation tools in the PDF top bar, or as a floating bar at the bottom.')
+			.addDropdown((d) =>
+				d
+					.addOption('top', 'Top bar')
+					.addOption('bottom', 'Floating at bottom')
+					.setValue(this.plugin.settings.toolbarPosition)
+					.onChange(async (value) => {
+						this.plugin.settings.toolbarPosition = value as ToolbarPosition;
+						await this.plugin.saveSettings();
+						this.plugin.refreshDockedToolbar();
+					}),
 			);
 
 		new Setting(containerEl)

@@ -18,12 +18,16 @@ import type { StrokeStore } from './stroke-store';
 import { straightenPoints } from './stroke-straighten';
 import { StylusGestureGuard } from './stylus-gesture-guard';
 import { TwoFingerHoldDetector } from './two-finger-hold';
+import { TwoFingerDoubleTapDetector } from './two-finger-tap';
 import type { UndoController } from './undo-controller';
 
 const LONG_PRESS_MOVE_PX = 15;
 const TWO_FINGER_HOLD_MS = 300;
 const TWO_FINGER_MOVE_PX = 25;
 const MIN_STROKE_MOVEMENT_PX = 2;
+const TWO_FINGER_TAP_MAX_MS = 250;
+const TWO_FINGER_TAP_GAP_MS = 400;
+const TWO_FINGER_TAP_MOVE_PX = 15;
 
 export interface PointerEventHandlerDeps {
 	palette: Palette;
@@ -35,6 +39,7 @@ export interface PointerEventHandlerDeps {
 	handedness: () => Handedness;
 	penHold: () => PenHoldSettings;
 	straightenHighlighter?: () => boolean;
+	twoFingerDoubleTapUndo?: () => boolean;
 	onHistoryChange?: () => void;
 }
 
@@ -48,6 +53,7 @@ export class PointerEventHandler {
 	private stylusGuard = new StylusGestureGuard();
 	private longPress: LongPressDetector;
 	private twoFingerHold: TwoFingerHoldDetector;
+	private twoFingerTap: TwoFingerDoubleTapDetector;
 
 	constructor(
 		private canvas: HTMLCanvasElement,
@@ -68,6 +74,14 @@ export class PointerEventHandler {
 				onFire: (cx, cy) => this.onTwoFingerFire(cx, cy),
 				onDisarm: () => this.removeTwoFingerIndicator(),
 			},
+		);
+		this.twoFingerTap = new TwoFingerDoubleTapDetector(
+			{
+				maxTapMs: TWO_FINGER_TAP_MAX_MS,
+				maxGapMs: TWO_FINGER_TAP_GAP_MS,
+				movementThresholdPx: TWO_FINGER_TAP_MOVE_PX,
+			},
+			() => this.onTwoFingerDoubleTap(),
 		);
 	}
 
@@ -91,6 +105,7 @@ export class PointerEventHandler {
 		if (e.pointerType === 'pen') this.stylusGuard.penDown(e.pointerId);
 		if (e.pointerType === 'touch') {
 			this.twoFingerHold.pointerDown(e.pointerId, e.clientX, e.clientY);
+			this.twoFingerTap.pointerDown(e.pointerId, e.clientX, e.clientY);
 			return;
 		}
 		if (e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
@@ -110,6 +125,7 @@ export class PointerEventHandler {
 	private onPointerMove(e: PointerEvent): void {
 		if (e.pointerType === 'touch') {
 			this.twoFingerHold.pointerMove(e.pointerId, e.clientX, e.clientY);
+			this.twoFingerTap.pointerMove(e.pointerId, e.clientX, e.clientY);
 			return;
 		}
 		if (this.stylusTouchId !== null) return;
@@ -126,6 +142,7 @@ export class PointerEventHandler {
 		if (e.pointerType === 'pen') this.stylusGuard.penUp(e.pointerId);
 		if (e.pointerType === 'touch') {
 			this.twoFingerHold.pointerUp(e.pointerId);
+			this.twoFingerTap.pointerUp(e.pointerId);
 			return;
 		}
 		if (this.stylusTouchId !== null) return;
@@ -150,6 +167,14 @@ export class PointerEventHandler {
 		this.deps.overlays.redrawPage(this.canvas);
 		this.releasePointerCapture();
 		this.openPaletteAt(clientX, clientY);
+	}
+
+	private onTwoFingerDoubleTap(): void {
+		if (!(this.deps.twoFingerDoubleTapUndo?.() ?? false)) return;
+		if (this.deps.palette.isOpen() || this.state.isBusy()) return;
+		this.twoFingerHold.cancel();
+		this.deps.undo.undo();
+		this.deps.onHistoryChange?.();
 	}
 
 	private onTwoFingerArm(cx: number, cy: number): void {

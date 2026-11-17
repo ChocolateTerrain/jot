@@ -132,6 +132,104 @@
 	}
 }
 
+/* Toolbar embedded in Obsidian's PDF top bar (toolbar position: top). */
+.jot-docked-toolbar.is-inline {
+	position: static;
+	transform: none;
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: none;
+	margin-left: auto;
+	pointer-events: auto;
+}
+
+.jot-docked-toolbar.is-inline .jot-docked-toolbar-controls {
+	max-width: 100%;
+	gap: 2px;
+	padding: 0 4px;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	backdrop-filter: none;
+	scrollbar-width: none;
+}
+
+.jot-docked-toolbar.is-inline .jot-docked-toolbar-controls::-webkit-scrollbar {
+	display: none;
+}
+
+.jot-docked-toolbar.is-inline .jot-dock-button {
+	width: 34px;
+	height: 34px;
+	flex: 0 0 34px;
+	border-radius: 6px;
+}
+
+.jot-docked-toolbar.is-inline .jot-dock-button > svg {
+	width: 20px !important;
+	height: 20px !important;
+	min-width: 20px;
+	min-height: 20px;
+	flex-basis: 20px;
+}
+
+.jot-docked-toolbar.is-inline .jot-dock-tool-label {
+	display: none;
+}
+
+.jot-docked-toolbar.is-inline .jot-dock-width {
+	width: 28px;
+	flex-basis: 28px;
+}
+
+.jot-docked-toolbar.is-inline .jot-dock-color {
+	width: 24px;
+	height: 24px;
+	flex-basis: 24px;
+	margin: 0 2px;
+}
+
+.jot-docked-toolbar.is-inline .jot-dock-color {
+	border-radius: 50%;
+}
+
+.jot-dock-color-current {
+	display: none;
+}
+
+@media (max-width: 900px) {
+	.jot-docked-toolbar.is-inline .jot-dock-color:not(.jot-dock-color-current) {
+		display: none;
+	}
+	.jot-docked-toolbar.is-inline .jot-dock-color-current {
+		display: inline-flex;
+	}
+}
+
+.jot-dock-color-popover {
+	position: fixed;
+	z-index: var(--layer-popover, 30);
+	display: grid;
+	grid-template-columns: repeat(4, 38px);
+	gap: 8px;
+	padding: 10px;
+	border: 1px solid var(--background-modifier-border, #555);
+	border-radius: 12px;
+	background: var(--background-secondary, #30343b);
+	box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+}
+
+.jot-dock-color-popover .jot-dock-color {
+	width: 38px;
+	height: 38px;
+}
+
+.jot-docked-toolbar.is-inline .jot-dock-separator {
+	height: 22px;
+	margin: 0 3px;
+}
+
 .jot-passthrough {
 	pointer-events: none;
 }

@@ -145,6 +145,10 @@ export default class JotPlugin extends Plugin {
 			this.overlays.attachToActivePdf();
 			this.syncDockedToolbar();
 		});
+
+		// The PDF top bar can load after file-open or be rebuilt by Obsidian;
+		// re-check cheaply so the toolbar finds (and stays in) it.
+		this.registerInterval(window.setInterval(() => this.syncDockedToolbar(), 1000));
 	}
 
 	onunload() {
@@ -155,11 +159,24 @@ export default class JotPlugin extends Plugin {
 	}
 
 	private syncDockedToolbar(): void {
-		if (this.overlays.getActivePdfFilePath()) {
-			this.dockedToolbar?.show(activeDocument.body);
-		} else {
+		const leaf = this.overlays.getActivePdfLeaf();
+		if (!leaf || !this.overlays.getActivePdfFilePath()) {
 			this.dockedToolbar?.hide();
+			return;
 		}
+		if (this.settings.toolbarPosition === 'top') {
+			const bar = leaf.view.containerEl.querySelector<HTMLElement>('.pdf-toolbar');
+			if (bar) {
+				this.dockedToolbar?.show(bar, 'inline', bar.querySelector('.pdf-toolbar-right'));
+				return;
+			}
+		}
+		this.dockedToolbar?.show(activeDocument.body, 'floating');
+	}
+
+	refreshDockedToolbar(): void {
+		this.dockedToolbar?.hide();
+		this.syncDockedToolbar();
 	}
 
 	private async ensureLoaded(pdfPath: string) {
@@ -194,6 +211,7 @@ export default class JotPlugin extends Plugin {
 				durationMs: this.settings.penHoldMs,
 			}),
 			straightenHighlighter: () => this.settings.straightenHighlighter,
+			twoFingerDoubleTapUndo: () => this.settings.twoFingerDoubleTapUndo,
 			onHistoryChange: () => this.dockedToolbar?.refresh(),
 		}).attach();
 	}

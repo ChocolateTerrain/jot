@@ -1,4 +1,5 @@
 import { setIcon } from 'obsidian';
+import { OutsideCloseListener } from './outside-close-listener';
 import {
 	PALETTE_COLORS,
 	PALETTE_WIDTHS,
@@ -13,27 +14,48 @@ const TOOLS: { id: Tool; icon: string; label: string }[] = [
 	{ id: 'eraser', icon: 'eraser', label: 'Eraser' },
 ];
 
+export type ToolbarPlacement = 'floating' | 'inline';
+
 const MAX_WIDTH = PALETTE_WIDTHS[PALETTE_WIDTHS.length - 1] ?? 0.009;
 
 export class DockedToolbar {
 	private element: HTMLElement | null = null;
+	private placement: ToolbarPlacement = 'floating';
+	private popover: HTMLElement | null = null;
+	private popoverClosedAt = 0;
+	private outsideClose = new OutsideCloseListener(
+		() => this.popover,
+		() => this.closeColorPopover(),
+	);
 
 	constructor(
 		private palette: Palette,
 		private hooks: PaletteHooks,
 	) {}
 
-	show(parent: HTMLElement): void {
-		if (this.element?.parentElement === parent) return;
+	/**
+	 * Show the toolbar in `parent`. 'floating' pins it to the bottom of the
+	 * window; 'inline' embeds it in an existing bar (e.g. the PDF top bar),
+	 * inserted before `before` when that is a child of `parent`.
+	 */
+	show(
+		parent: HTMLElement,
+		placement: ToolbarPlacement = 'floating',
+		before: Element | null = null,
+	): void {
+		if (this.element?.parentElement === parent && this.placement === placement) return;
 		this.hide();
 		const element = parent.ownerDocument.createElement('div');
 		element.className = 'jot-docked-toolbar';
+		if (placement === 'inline') element.classList.add('is-inline');
 		this.element = element;
+		this.placement = placement;
 		this.render();
-		parent.appendChild(element);
+		parent.insertBefore(element, before?.parentElement === parent ? before : null);
 	}
 
 	hide(): void {
+		this.closeColorPopover();
 		this.element?.remove();
 		this.element = null;
 	}
@@ -133,7 +155,59 @@ export class DockedToolbar {
 			});
 			toolbar.appendChild(button);
 		}
+
+		// On narrow screens (iPad portrait) CSS hides the swatch row in the top
+		// bar and shows this single "current color" button with a pop-up instead.
+		const current = doc.createElement('button');
+		current.type = 'button';
+		current.className = 'jot-dock-button jot-dock-color jot-dock-color-current';
+		current.style.backgroundColor = state.color;
+		current.setAttribute('aria-label', 'Choose color');
+		current.addEventListener('click', () => this.toggleColorPopover(current, colors));
+		toolbar.appendChild(current);
 		host.appendChild(toolbar);
+	}
+
+	private toggleColorPopover(anchor: HTMLElement, colors: readonly string[]): void {
+		if (this.popover) {
+			this.closeColorPopover();
+			return;
+		}
+		// The outside-tap listener already closed it on this same tap.
+		if (Date.now() - this.popoverClosedAt < 300) return;
+		const doc = anchor.ownerDocument;
+		const popover = doc.createElement('div');
+		popover.className = 'jot-dock-color-popover';
+		const rect = anchor.getBoundingClientRect();
+		popover.style.top = `${Math.round(rect.bottom + 6)}px`;
+		popover.style.right = `${Math.max(8, Math.round(doc.documentElement.clientWidth - rect.right))}px`;
+		const selected = this.palette.getState().color;
+		for (const color of colors) {
+			const button = doc.createElement('button');
+			button.type = 'button';
+			button.className = 'jot-dock-button jot-dock-color';
+			button.dataset.color = color;
+			button.style.backgroundColor = color;
+			button.setAttribute('aria-label', `Color ${color}`);
+			if (color === selected) button.classList.add('is-active');
+			button.addEventListener('click', () => {
+				this.palette.setColor(color);
+				this.closeColorPopover();
+				this.refresh();
+			});
+			popover.appendChild(button);
+		}
+		doc.body.appendChild(popover);
+		this.popover = popover;
+		this.outsideClose.attach(doc);
+	}
+
+	private closeColorPopover(): void {
+		if (!this.popover) return;
+		this.outsideClose.detach();
+		this.popover.remove();
+		this.popover = null;
+		this.popoverClosedAt = Date.now();
 	}
 
 	private iconButton(
