@@ -133,6 +133,34 @@
 }
 
 /* Toolbar embedded in Obsidian's PDF top bar (toolbar position: top). */
+/* Obsidian styles buttons inside its top bar (padding, min-width, grey
+   background); reset those so the compact controls keep their shape. */
+.jot-docked-toolbar.is-inline .jot-docked-toolbar-controls button.jot-dock-button {
+	padding: 0 !important;
+	min-width: 0 !important;
+	margin: 0;
+	border: 0;
+	box-shadow: none !important;
+	color: var(--icon-color, var(--text-normal, #eee)) !important;
+}
+
+.jot-docked-toolbar.is-inline .jot-docked-toolbar-controls button.jot-dock-button:not(.jot-dock-color) {
+	background-color: transparent !important;
+}
+
+.jot-docked-toolbar.is-inline .jot-docked-toolbar-controls button.jot-dock-button:not(.jot-dock-color).is-active {
+	background-color: var(--background-modifier-hover, rgba(255, 255, 255, 0.12)) !important;
+	box-shadow: inset 0 0 0 2px var(--interactive-accent, #3688ff) !important;
+}
+
+.jot-docked-toolbar.is-inline .jot-docked-toolbar-controls button.jot-dock-color {
+	border: 2px solid rgba(255, 255, 255, 0.35) !important;
+}
+
+.jot-docked-toolbar.is-inline .jot-docked-toolbar-controls button.jot-dock-color.is-active {
+	box-shadow: 0 0 0 2px var(--interactive-accent, #3688ff) !important;
+}
+
 .jot-docked-toolbar.is-inline {
 	position: static;
 	transform: none;
@@ -160,9 +188,9 @@
 }
 
 .jot-docked-toolbar.is-inline .jot-dock-button {
-	width: 34px;
-	height: 34px;
-	flex: 0 0 34px;
+	width: 34px !important;
+	height: 34px !important;
+	flex: 0 0 34px !important;
 	border-radius: 6px;
 }
 
@@ -174,19 +202,27 @@
 	flex-basis: 20px;
 }
 
+.jot-docked-toolbar .jot-docked-toolbar-controls .jot-dock-width > svg.jot-dock-width-dot {
+	min-width: 0;
+	min-height: 0;
+	flex: 0 0 auto;
+	fill: currentColor;
+	stroke: none;
+}
+
 .jot-docked-toolbar.is-inline .jot-dock-tool-label {
 	display: none;
 }
 
 .jot-docked-toolbar.is-inline .jot-dock-width {
-	width: 28px;
-	flex-basis: 28px;
+	width: 28px !important;
+	flex-basis: 28px !important;
 }
 
 .jot-docked-toolbar.is-inline .jot-dock-color {
-	width: 24px;
-	height: 24px;
-	flex-basis: 24px;
+	width: 24px !important;
+	height: 24px !important;
+	flex-basis: 24px !important;
 	margin: 0 2px;
 }
 
@@ -220,9 +256,13 @@
 	box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
 }
 
-.jot-dock-color-popover .jot-dock-color {
-	width: 38px;
-	height: 38px;
+.jot-dock-color-popover button.jot-dock-color {
+	width: 38px !important;
+	height: 38px !important;
+	padding: 0 !important;
+	min-width: 0 !important;
+	border-radius: 50% !important;
+	border: 2px solid rgba(255, 255, 255, 0.35) !important;
 }
 
 .jot-docked-toolbar.is-inline .jot-dock-separator {

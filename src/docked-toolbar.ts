@@ -124,11 +124,22 @@ export class DockedToolbar {
 			button.dataset.width = String(width);
 			button.setAttribute('aria-label', `Width ${width}`);
 			button.setAttribute('aria-pressed', String(state.width === width));
-			const dot = doc.createElement('span');
-			dot.className = 'jot-dock-width-dot';
+			// An SVG circle, like the tool icons, so host button styles can't hide it.
 			const size = Math.round(3 + (width / MAX_WIDTH) * 13);
-			dot.style.width = `${size}px`;
-			dot.style.height = `${size}px`;
+			const svgNs = 'http://www.w3.org/2000/svg';
+			const dot = doc.createElementNS(svgNs, 'svg');
+			dot.setAttribute('class', 'jot-dock-width-dot');
+			dot.setAttribute('width', String(size));
+			dot.setAttribute('height', String(size));
+			dot.setAttribute('viewBox', '0 0 10 10');
+			const circle = doc.createElementNS(svgNs, 'circle');
+			circle.setAttribute('cx', '5');
+			circle.setAttribute('cy', '5');
+			circle.setAttribute('r', '5');
+			circle.setAttribute('fill', 'currentColor');
+			dot.style.setProperty('width', `${size}px`, 'important');
+			dot.style.setProperty('height', `${size}px`, 'important');
+			dot.appendChild(circle);
 			button.appendChild(dot);
 			button.addEventListener('click', () => {
 				this.palette.setWidth(width);
@@ -145,7 +156,7 @@ export class DockedToolbar {
 			button.type = 'button';
 			button.className = 'jot-dock-button jot-dock-color';
 			button.dataset.color = color;
-			button.style.backgroundColor = color;
+			button.style.setProperty('background-color', color, 'important');
 			button.setAttribute('aria-label', `Color ${color}`);
 			button.setAttribute('aria-pressed', String(state.color === color));
 			if (state.color === color) button.classList.add('is-active');
@@ -161,7 +172,7 @@ export class DockedToolbar {
 		const current = doc.createElement('button');
 		current.type = 'button';
 		current.className = 'jot-dock-button jot-dock-color jot-dock-color-current';
-		current.style.backgroundColor = state.color;
+		current.style.setProperty('background-color', state.color, 'important');
 		current.setAttribute('aria-label', 'Choose color');
 		current.addEventListener('click', () => this.toggleColorPopover(current, colors));
 		toolbar.appendChild(current);
@@ -187,7 +198,7 @@ export class DockedToolbar {
 			button.type = 'button';
 			button.className = 'jot-dock-button jot-dock-color';
 			button.dataset.color = color;
-			button.style.backgroundColor = color;
+			button.style.setProperty('background-color', color, 'important');
 			button.setAttribute('aria-label', `Color ${color}`);
 			if (color === selected) button.classList.add('is-active');
 			button.addEventListener('click', () => {

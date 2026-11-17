@@ -26,7 +26,7 @@ const TWO_FINGER_HOLD_MS = 300;
 const TWO_FINGER_MOVE_PX = 25;
 const MIN_STROKE_MOVEMENT_PX = 2;
 const TWO_FINGER_TAP_MAX_MS = 250;
-const TWO_FINGER_TAP_GAP_MS = 400;
+const TWO_FINGER_TAP_GAP_MS = 500;
 const TWO_FINGER_TAP_MOVE_PX = 15;
 
 export interface PointerEventHandlerDeps {
@@ -87,6 +87,7 @@ export class PointerEventHandler {
 
 	attach(): void {
 		this.blockStylusGesturePreemption();
+		this.trackFingerTaps();
 		this.canvas.addEventListener('touchstart', (e) => this.onStylusTouchStart(e), {
 			passive: false,
 		});
@@ -105,7 +106,6 @@ export class PointerEventHandler {
 		if (e.pointerType === 'pen') this.stylusGuard.penDown(e.pointerId);
 		if (e.pointerType === 'touch') {
 			this.twoFingerHold.pointerDown(e.pointerId, e.clientX, e.clientY);
-			this.twoFingerTap.pointerDown(e.pointerId, e.clientX, e.clientY);
 			return;
 		}
 		if (e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
@@ -125,7 +125,6 @@ export class PointerEventHandler {
 	private onPointerMove(e: PointerEvent): void {
 		if (e.pointerType === 'touch') {
 			this.twoFingerHold.pointerMove(e.pointerId, e.clientX, e.clientY);
-			this.twoFingerTap.pointerMove(e.pointerId, e.clientX, e.clientY);
 			return;
 		}
 		if (this.stylusTouchId !== null) return;
@@ -142,7 +141,6 @@ export class PointerEventHandler {
 		if (e.pointerType === 'pen') this.stylusGuard.penUp(e.pointerId);
 		if (e.pointerType === 'touch') {
 			this.twoFingerHold.pointerUp(e.pointerId);
-			this.twoFingerTap.pointerUp(e.pointerId);
 			return;
 		}
 		if (this.stylusTouchId !== null) return;
@@ -385,6 +383,44 @@ export class PointerEventHandler {
 			if ((touch as Touch & { touchType?: string }).touchType === 'stylus') return touch;
 		}
 		return null;
+	}
+
+	/**
+	 * Feed finger touches to the double-tap detector from Touch Events rather
+	 * than Pointer Events: iPadOS starts its own pinch handling as soon as a
+	 * second finger lands and disrupts the pointer stream, but touch events
+	 * (including touchcancel) always arrive.
+	 */
+	private trackFingerTaps(): void {
+		const each = (list: TouchList, fn: (touch: Touch) => void) => {
+			for (let index = 0; index < list.length; index++) {
+				const touch = list.item(index);
+				if (!touch) continue;
+				if ((touch as Touch & { touchType?: string }).touchType === 'stylus') continue;
+				fn(touch);
+			}
+		};
+		const opts = { passive: true };
+		this.canvas.addEventListener(
+			'touchstart',
+			(e) =>
+				each(e.changedTouches, (t) =>
+					this.twoFingerTap.pointerDown(t.identifier, t.clientX, t.clientY),
+				),
+			opts,
+		);
+		this.canvas.addEventListener(
+			'touchmove',
+			(e) =>
+				each(e.changedTouches, (t) =>
+					this.twoFingerTap.pointerMove(t.identifier, t.clientX, t.clientY),
+				),
+			opts,
+		);
+		const lift = (e: TouchEvent) =>
+			each(e.changedTouches, (t) => this.twoFingerTap.pointerUp(t.identifier));
+		this.canvas.addEventListener('touchend', lift, opts);
+		this.canvas.addEventListener('touchcancel', lift, opts);
 	}
 
 	private blockStylusGesturePreemption(): void {

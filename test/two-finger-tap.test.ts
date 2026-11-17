@@ -128,22 +128,22 @@ describe('PointerEventHandler two-finger double tap', () => {
 		canvas.setAttribute('data-jot-key', 'doc.pdf::1');
 		document.body.appendChild(canvas);
 		new PointerEventHandler(canvas, {} as CanvasRenderingContext2D, deps).attach();
-		const finger = (type: string, pointerId: number, clientX: number) =>
-			canvas.dispatchEvent(
-				new PointerEvent(type, {
-					bubbles: true,
-					pointerId,
-					pointerType: 'touch',
-					clientX,
-					clientY: 200,
-				}),
-			);
-		const twoFingerTap = () => {
-			finger('pointerdown', 11, 100);
-			finger('pointerdown', 12, 160);
+		const finger = (type: string, identifier: number, clientX: number) => {
+			const touch = { identifier, clientX, clientY: 200, touchType: 'direct' };
+			const list = Object.assign([touch], { item: (i: number) => (i === 0 ? touch : null) });
+			const event = new Event(type, { bubbles: true });
+			Object.defineProperties(event, {
+				changedTouches: { value: list },
+				touches: { value: list },
+			});
+			canvas.dispatchEvent(event);
+		};
+		const twoFingerTap = (end = 'touchend') => {
+			finger('touchstart', 11, 100);
+			finger('touchstart', 12, 160);
 			vi.advanceTimersByTime(80);
-			finger('pointerup', 11, 100);
-			finger('pointerup', 12, 160);
+			finger(end, 11, 100);
+			finger(end, 12, 160);
 			vi.advanceTimersByTime(120);
 		};
 		return { undo, onHistoryChange, twoFingerTap };
@@ -155,6 +155,13 @@ describe('PointerEventHandler two-finger double tap', () => {
 		twoFingerTap();
 		expect(undo).toHaveBeenCalledOnce();
 		expect(onHistoryChange).toHaveBeenCalled();
+	});
+
+	it('still works when iPadOS cancels the touches to start a pinch', () => {
+		const { undo, twoFingerTap } = setup(true);
+		twoFingerTap('touchcancel');
+		twoFingerTap('touchcancel');
+		expect(undo).toHaveBeenCalledOnce();
 	});
 
 	it('does nothing when the setting is off', () => {
