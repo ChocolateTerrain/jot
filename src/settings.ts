@@ -27,6 +27,7 @@ export interface JotSettings {
 	penHoldMs: number;
 	straightenHighlighter: boolean;
 	twoFingerDoubleTapUndo: boolean;
+	twoFingerHoldOpensPalette: boolean;
 	toolbarPosition: ToolbarPosition;
 	toolState: ToolState;
 	penState: ToolMemory;
@@ -42,6 +43,7 @@ export const DEFAULT_SETTINGS: JotSettings = {
 	penHoldMs: PEN_HOLD_MIN_MS,
 	straightenHighlighter: true,
 	twoFingerDoubleTapUndo: true,
+	twoFingerHoldOpensPalette: true,
 	toolbarPosition: 'top',
 	toolState: { ...DEFAULT_TOOL_STATE },
 	penState: { ...DEFAULT_PEN_MEMORY },
@@ -86,7 +88,7 @@ export class JotSettingTab extends PluginSettingTab {
 		let holdDuration: Setting | null = null;
 		new Setting(containerEl)
 			.setName('Open palette with pen hold')
-			.setDesc('When off, only a two-finger hold opens the palette.')
+			.setDesc('Hold the pen still to open the round palette.')
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.penHoldOpensPalette).onChange(async (value) => {
 					this.plugin.settings.penHoldOpensPalette = value;
@@ -111,6 +113,18 @@ export class JotSettingTab extends PluginSettingTab {
 					}),
 			)
 			.setDisabled(!this.plugin.settings.penHoldOpensPalette);
+
+		new Setting(containerEl)
+			.setName('Open palette with two-finger hold')
+			.setDesc(
+				'Hold two fingers on the page to open the round palette. Turn off if you use the toolbar instead.',
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.twoFingerHoldOpensPalette).onChange(async (value) => {
+					this.plugin.settings.twoFingerHoldOpensPalette = value;
+					await this.plugin.saveSettings();
+				}),
+			);
 
 		new Setting(containerEl)
 			.setName('Straighten highlighter strokes')

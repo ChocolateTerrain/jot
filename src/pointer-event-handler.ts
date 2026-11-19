@@ -36,6 +36,7 @@ export interface PointerEventHandlerDeps {
 	penHold: () => PenHoldSettings;
 	straightenHighlighter?: () => boolean;
 	twoFingerDoubleTapUndo?: () => boolean;
+	twoFingerHoldOpensPalette?: () => boolean;
 	onHistoryChange?: () => void;
 }
 
@@ -190,7 +191,8 @@ export class PointerEventHandler {
 	}
 
 	private onTwoFingerArm(cx: number, cy: number): void {
-		if (this.deps.palette.isOpen() || this.state.isBusy()) {
+		const enabled = this.deps.twoFingerHoldOpensPalette?.() ?? true;
+		if (!enabled || this.deps.palette.isOpen() || this.state.isBusy()) {
 			this.twoFingerHold.cancel();
 			return;
 		}

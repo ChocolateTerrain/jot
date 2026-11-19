@@ -241,6 +241,7 @@ export default class JotPlugin extends Plugin {
 			}),
 			straightenHighlighter: () => this.settings.straightenHighlighter,
 			twoFingerDoubleTapUndo: () => this.settings.twoFingerDoubleTapUndo,
+			twoFingerHoldOpensPalette: () => this.settings.twoFingerHoldOpensPalette,
 			onHistoryChange: () => this.dockedToolbar?.refresh(),
 		}).attach();
 	}

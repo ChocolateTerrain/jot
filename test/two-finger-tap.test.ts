@@ -171,3 +171,53 @@ describe('PointerEventHandler two-finger double tap', () => {
 		expect(undo).not.toHaveBeenCalled();
 	});
 });
+
+describe('two-finger hold palette setting', () => {
+	beforeAll(() => {
+		(window as { activeDocument?: Document }).activeDocument = document;
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+		document.body.innerHTML = '';
+	});
+
+	function holdTwoFingers(enabled: boolean) {
+		vi.useFakeTimers();
+		const show = vi.fn();
+		const deps = {
+			palette: { isOpen: () => false, show },
+			strokes: new StrokeStore(),
+			overlays: { redrawPage: vi.fn() },
+			sidecar: { scheduleSave: vi.fn() },
+			undo: { push: vi.fn(), undo: vi.fn() },
+			toolState: () => ({ tool: 'pen', color: '#000000', width: 0.005 }),
+			handedness: () => 'right',
+			penHold: () => ({ enabled: false, durationMs: 300 }),
+			twoFingerHoldOpensPalette: () => enabled,
+		} as unknown as PointerEventHandlerDeps;
+		const canvas = document.createElement('canvas');
+		canvas.setAttribute('data-jot-key', 'doc.pdf::1');
+		document.body.appendChild(canvas);
+		new PointerEventHandler(canvas, {} as CanvasRenderingContext2D, deps).attach();
+		for (const [pointerId, clientX] of [[21, 100], [22, 160]] as const) {
+			canvas.dispatchEvent(
+				new PointerEvent('pointerdown', { bubbles: true, pointerId, pointerType: 'touch', clientX, clientY: 200 }),
+			);
+		}
+		const indicatorShown = document.querySelector('.jot-hold-indicator') !== null;
+		vi.advanceTimersByTime(400);
+		return { show, indicatorShown };
+	}
+
+	it('opens the palette by default', () => {
+		const { show, indicatorShown } = holdTwoFingers(true);
+		expect(indicatorShown).toBe(true);
+		expect(show).toHaveBeenCalledOnce();
+	});
+
+	it('does nothing (not even the hold ring) when turned off', () => {
+		const { show, indicatorShown } = holdTwoFingers(false);
+		expect(indicatorShown).toBe(false);
+		expect(show).not.toHaveBeenCalled();
+	});
+});

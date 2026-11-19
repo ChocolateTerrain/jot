@@ -17,6 +17,8 @@ const DRAWING_PREVIEW_CLASS = 'jot-drawing-preview';
 const LEGACY_OVERLAY_SELECTOR = 'canvas.jot-overlay';
 const PAGE_ANCHOR_CLASS = 'jot-page-anchor';
 const PASSTHROUGH_CLASS = 'jot-passthrough';
+/** Layers the PDF viewer rewrites constantly while scrolling; they never affect overlays. */
+const IGNORED_LAYERS = '.textLayer, .annotationLayer';
 
 export const OVERLAY_KEY_ATTR = 'data-jot-key';
 
@@ -44,10 +46,24 @@ export class OverlayManager {
 
 		this.upgradePages(container, filePath);
 		if (this.containerObservers.has(leaf)) return;
-		const observer = new MutationObserver(() => {
-			const currentPath = this.filePathForLeaf(leaf);
-			if (!currentPath) return;
-			this.upgradePages(container, currentPath);
+		// Large PDFs produce a constant stream of DOM changes while scrolling.
+		// Only look at pages that actually changed, at most once per frame.
+		const pending = new Set<HTMLElement>();
+		let scheduled = false;
+		const observer = new MutationObserver((mutations) => {
+			for (const mutation of mutations) collectAffectedPages(mutation, pending);
+			if (pending.size === 0 || scheduled) return;
+			scheduled = true;
+			window.requestAnimationFrame(() => {
+				scheduled = false;
+				const currentPath = this.filePathForLeaf(leaf);
+				const pages = [...pending];
+				pending.clear();
+				if (!currentPath) return;
+				for (const page of pages) {
+					if (page.isConnected) this.ensureOverlayOnPage(page, currentPath);
+				}
+			});
 		});
 		observer.observe(container, { childList: true, subtree: true });
 		this.containerObservers.set(leaf, observer);
@@ -170,7 +186,10 @@ export class OverlayManager {
 		const existing = page.querySelector<HTMLCanvasElement>(`canvas.${OVERLAY_CLASS}`);
 		if (existing) {
 			if (existing.getAttribute(OVERLAY_KEY_ATTR) === key) {
-				if (!host.contains(existing)) host.appendChild(existing);
+				// Already in place: its resize and visibility observers keep it
+				// sized and drawn, so skip the (expensive) layout reads here.
+				if (host.contains(existing)) return;
+				host.appendChild(existing);
 				this.sizeOverlayToPage(existing, page);
 				this.redrawPage(existing);
 				return;
@@ -295,4 +314,30 @@ export class OverlayManager {
 		page.querySelector<HTMLElement>('.textLayer')?.classList.add(PASSTHROUGH_CLASS);
 		page.querySelector<HTMLElement>('.annotationLayer')?.classList.add(PASSTHROUGH_CLASS);
 	}
+}
+
+/** Add the pages a DOM change could affect to `pages`; ignore text/annotation layer churn. */
+function collectAffectedPages(mutation: MutationRecord, pages: Set<HTMLElement>): void {
+	if (!isElement(mutation.target)) return;
+	const target = mutation.target;
+	if (target.closest(IGNORED_LAYERS)) return;
+	const changed = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)];
+	let relevant = false;
+	for (const node of changed) {
+		if (!isElement(node)) continue;
+		if (node.matches(IGNORED_LAYERS)) continue;
+		// Our own drawing preview comes and goes with every stroke.
+		if (node.classList.contains(DRAWING_PREVIEW_CLASS)) continue;
+		if (node.matches('.page')) pages.add(node as HTMLElement);
+		node.querySelectorAll<HTMLElement>('.page').forEach((page) => pages.add(page));
+		relevant = true;
+	}
+	if (!relevant) return;
+	const page = target.closest<HTMLElement>('.page');
+	if (page) pages.add(page);
+}
+
+/** Cross-window safe (popout windows have their own Element class). */
+function isElement(node: Node): node is Element {
+	return node.nodeType === 1;
 }
