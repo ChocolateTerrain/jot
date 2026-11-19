@@ -80,6 +80,7 @@ describe('PointerEventHandler highlighter straightening', () => {
 	function drawWobblyStroke(tool: 'pen' | 'highlighter', straighten: boolean) {
 		vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
 			setTransform: vi.fn(),
+			clearRect: vi.fn(),
 			beginPath: vi.fn(),
 			moveTo: vi.fn(),
 			lineTo: vi.fn(),

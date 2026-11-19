@@ -30,8 +30,8 @@ describe('eraseCircleFromStroke', () => {
 		const left = pieces[0]!.points;
 		const right = pieces[1]!.points;
 		expect(left[0]!.x).toBeCloseTo(0.1);
-		expect(left[left.length - 1]!.x * 1000).toBeCloseTo(500 - 50 - PEN_HALF, 3);
-		expect(right[0]!.x * 1000).toBeCloseTo(500 + 50 + PEN_HALF, 3);
+		expect(left[left.length - 1]!.x * 1000).toBeCloseTo(500 - 50 - PEN_HALF, 1);
+		expect(right[0]!.x * 1000).toBeCloseTo(500 + 50 + PEN_HALF, 1);
 		expect(right[right.length - 1]!.x).toBeCloseTo(0.9);
 		expect(pieces[0]!.color).toBe('#000000');
 	});
@@ -41,8 +41,8 @@ describe('eraseCircleFromStroke', () => {
 		const pieces = eraseCircleFromStroke(stroke, 0.5, 0.5, 20, page)!;
 		expect(pieces).toHaveLength(2);
 		// Highlighter half-thickness: 0.0025 * 4 * 1000 / 2 = 5px.
-		expect(pieces[0]!.points[1]!.x * 1000).toBeCloseTo(475, 3);
-		expect(pieces[1]!.points[0]!.x * 1000).toBeCloseTo(525, 3);
+		expect(pieces[0]!.points[1]!.x * 1000).toBeCloseTo(475, 1);
+		expect(pieces[1]!.points[0]!.x * 1000).toBeCloseTo(525, 1);
 	});
 
 	it('shortens the line when erasing its end', () => {
@@ -50,7 +50,7 @@ describe('eraseCircleFromStroke', () => {
 		expect(pieces).toHaveLength(1);
 		const pts = pieces[0]!.points;
 		expect(pts[0]!.x).toBeCloseTo(0.1);
-		expect(pts[pts.length - 1]!.x * 1000).toBeCloseTo(900 - 50 - PEN_HALF, 3);
+		expect(pts[pts.length - 1]!.x * 1000).toBeCloseTo(900 - 50 - PEN_HALF, 1);
 	});
 
 	it('removes a stroke that is fully covered', () => {

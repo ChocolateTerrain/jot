@@ -6,14 +6,21 @@ import {
 } from './jot-file';
 import type { StrokeStore } from './stroke-store';
 
-const SAVE_DEBOUNCE_MS = 250;
+// Saving rewrites the whole PDF's annotations, so wait for a pause in drawing.
+const SAVE_DEBOUNCE_MS = 750;
+
+interface WrittenFile {
+	text: string;
+	size?: number;
+	mtime?: number;
+}
 const PLUGIN_LOG = '[jot]';
 
 export class SidecarStore {
 	private saveTimers = new Map<string, number>();
 	// What we last wrote to each sidecar, so a modify event can be told apart
 	// from our own write echoing back through sync.
-	private lastWritten = new Map<string, string>();
+	private lastWritten = new Map<string, WrittenFile>();
 
 	constructor(
 		private adapter: DataAdapter,
@@ -50,9 +57,18 @@ export class SidecarStore {
 				}
 				return;
 			}
-			const text = JSON.stringify(payload, null, 2);
-			this.lastWritten.set(path, text);
+			// No indentation: pretty-printing made large files several times bigger.
+			const text = JSON.stringify(payload);
+			const record: WrittenFile = { text };
+			this.lastWritten.set(path, record);
 			await this.adapter.write(path, text);
+			// Remember size and time so the echo of this write can be recognised
+			// without reading the whole file back.
+			const stat = await this.statOf(path);
+			if (stat && this.lastWritten.get(path) === record) {
+				record.size = stat.size;
+				record.mtime = stat.mtime;
+			}
 		} catch (err) {
 			console.error(`${PLUGIN_LOG} save failed for ${path}:`, err);
 		}
@@ -72,10 +88,23 @@ export class SidecarStore {
 	async isOwnSave(path: string): Promise<boolean> {
 		const written = this.lastWritten.get(path);
 		if (written === undefined) return false;
+		if (written.mtime !== undefined) {
+			const stat = await this.statOf(path);
+			if (stat) return stat.size === written.size && stat.mtime === written.mtime;
+		}
 		try {
-			return (await this.adapter.read(path)) === written;
+			return (await this.adapter.read(path)) === written.text;
 		} catch {
 			return false;
+		}
+	}
+
+	private async statOf(path: string): Promise<{ size: number; mtime: number } | null> {
+		try {
+			const stat = await this.adapter.stat?.(path);
+			return stat ? { size: stat.size, mtime: stat.mtime } : null;
+		} catch {
+			return null;
 		}
 	}
 

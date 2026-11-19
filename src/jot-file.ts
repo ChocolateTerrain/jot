@@ -1,4 +1,5 @@
 import type { Stroke } from './stroke-math';
+import { roundPoint } from './stroke-compact';
 
 export const JOT_SUFFIX = '.jot.json';
 export const JOT_FORMAT_VERSION = 2;
@@ -47,7 +48,7 @@ export function isSupportedVersion(version: number): boolean {
 
 export function migrateStroke(raw: Partial<Stroke>): Stroke {
 	return {
-		points: raw.points ?? [],
+		points: (raw.points ?? []).map(roundPoint),
 		color: raw.color ?? '#000000',
 		width: raw.width ?? 0.0025,
 		tool: raw.tool ?? 'pen',

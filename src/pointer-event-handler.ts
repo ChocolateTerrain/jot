@@ -10,6 +10,7 @@ import { PenStrokeState } from './pen-stroke-state';
 import type { SidecarStore } from './sidecar-store';
 import type { NormalizedPoint } from './stroke-math';
 import { eraseAlongPath, eraserRadiusFor } from './stroke-erase';
+import { compactPoints, roundPoint } from './stroke-compact';
 import type { StrokeStore } from './stroke-store';
 import { straightenPoints } from './stroke-straighten';
 import { StylusGestureGuard } from './stylus-gesture-guard';
@@ -55,6 +56,12 @@ export class PointerEventHandler {
 	/** Last eraser position (normalized) this gesture, and whether it has moved. */
 	private lastErase: { x: number; y: number } | null = null;
 	private eraserMoved = false;
+	/**
+	 * The page's position, measured once when a stroke starts. Measuring on
+	 * every pencil movement forces layout, which is slow in a large PDF; the
+	 * page can't move mid-stroke because the pencil holds the pointer.
+	 */
+	private gestureRect: DOMRect | null = null;
 
 	constructor(
 		private canvas: HTMLCanvasElement,
@@ -174,6 +181,7 @@ export class PointerEventHandler {
 		this.removeHoldIndicator();
 		this.hideEraserCursor();
 		this.lastErase = null;
+		this.gestureRect = null;
 		this.destroyDrawingPreview();
 		const { clientX, clientY } = this.state.pressedAt;
 		this.state.reset();
@@ -206,6 +214,7 @@ export class PointerEventHandler {
 	}
 
 	private beginInputAt(clientX: number, clientY: number, pressure: number): void {
+		this.gestureRect = this.canvas.getBoundingClientRect();
 		this.state.beginAt(clientX, clientY, this.deps.toolState().tool, () =>
 			this.snapshotCurrent(),
 		);
@@ -257,6 +266,7 @@ export class PointerEventHandler {
 		const snapshot = this.state.takeEraserSnapshot();
 		if (snapshot) this.deps.undo.push(snapshot);
 		this.state.reset();
+		this.gestureRect = null;
 		this.deps.onHistoryChange?.();
 	}
 
@@ -264,7 +274,7 @@ export class PointerEventHandler {
 		const points = this.state.drawingPoints();
 		const key = this.canvas.getAttribute(OVERLAY_KEY_ATTR);
 		const firstPoint = points[0];
-		const rect = this.canvas.getBoundingClientRect();
+		const rect = this.pageRect();
 		const movedEnough =
 			firstPoint !== undefined &&
 			points.some(
@@ -283,7 +293,9 @@ export class PointerEventHandler {
 			const straighten =
 				tool.tool === 'highlighter' && (this.deps.straightenHighlighter?.() ?? false);
 			this.deps.strokes.appendToKey(key, {
-				points: straighten ? straightenPoints(points, rect.width, rect.height) : points,
+				points: straighten
+					? straightenPoints(points, rect.width, rect.height).map(roundPoint)
+					: compactPoints(points, rect.width, rect.height),
 				color: tool.color,
 				width: tool.width,
 				tool: tool.tool,
@@ -291,6 +303,7 @@ export class PointerEventHandler {
 			if (pdfPath) this.deps.sidecar.scheduleSave(pdfPath);
 		}
 		this.state.reset();
+		this.gestureRect = null;
 		this.destroyDrawingPreview();
 		this.deps.onHistoryChange?.();
 	}
@@ -306,8 +319,7 @@ export class PointerEventHandler {
 	}
 
 	private eraserRadiusPx(): number {
-		const rect = this.canvas.getBoundingClientRect();
-		return eraserRadiusFor(this.deps.toolState().width) * rect.height;
+		return eraserRadiusFor(this.deps.toolState().width) * this.pageRect().height;
 	}
 
 	/** Cut away everything under the eraser between two normalized positions. */
@@ -316,7 +328,7 @@ export class PointerEventHandler {
 		if (!key) return false;
 		const strokes = this.deps.strokes.forKey(key);
 		if (strokes.length === 0) return false;
-		const rect = this.canvas.getBoundingClientRect();
+		const rect = this.pageRect();
 		const next = eraseAlongPath(strokes, from, to, this.eraserRadiusPx(), {
 			width: rect.width,
 			height: rect.height,
@@ -384,8 +396,13 @@ export class PointerEventHandler {
 		this.activePointerId = null;
 	}
 
+	/** The page's rect: cached during a stroke, measured fresh otherwise. */
+	private pageRect(): DOMRect {
+		return this.gestureRect ?? this.canvas.getBoundingClientRect();
+	}
+
 	private toNormalized(clientX: number, clientY: number, pressure: number): NormalizedPoint {
-		const rect = this.canvas.getBoundingClientRect();
+		const rect = this.pageRect();
 		return {
 			x: (clientX - rect.left) / rect.width,
 			y: (clientY - rect.top) / rect.height,

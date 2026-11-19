@@ -65,7 +65,7 @@ export default class JotPlugin extends Plugin {
 			activePdfPath: () => this.overlays.getActivePdfFilePath(),
 			onAfterApply: (pdfPath) => {
 				this.scheduleSave(pdfPath);
-				this.dockedToolbar?.refresh();
+				this.dockedToolbar?.refreshHistory();
 			},
 		});
 		this.merge = new MergeService(
@@ -242,7 +242,7 @@ export default class JotPlugin extends Plugin {
 			straightenHighlighter: () => this.settings.straightenHighlighter,
 			twoFingerDoubleTapUndo: () => this.settings.twoFingerDoubleTapUndo,
 			twoFingerHoldOpensPalette: () => this.settings.twoFingerHoldOpensPalette,
-			onHistoryChange: () => this.dockedToolbar?.refresh(),
+			onHistoryChange: () => this.dockedToolbar?.refreshHistory(),
 		}).attach();
 	}
 

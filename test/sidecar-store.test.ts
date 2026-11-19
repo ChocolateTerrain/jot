@@ -10,14 +10,26 @@ interface FileSystem {
 	adapter: DataAdapter;
 }
 
-const makeFs = (initial: Record<string, string> = {}): FileSystem => {
+const makeFs = (initial: Record<string, string> = {}, withStat = false): FileSystem => {
 	const files: Record<string, string> = { ...initial };
+	const mtimes: Record<string, number> = {};
+	let clock = 1000;
 	const adapter = {
 		exists: vi.fn(async (path: string) => path in files),
 		read: vi.fn(async (path: string) => files[path] ?? ''),
 		write: vi.fn(async (path: string, data: string) => {
 			files[path] = data;
+			mtimes[path] = ++clock;
 		}),
+		...(withStat
+			? {
+					stat: vi.fn(async (path: string) =>
+						path in files
+							? { type: 'file', size: files[path]!.length, mtime: mtimes[path] ?? 0, ctime: 0 }
+							: null,
+					),
+				}
+			: {}),
 		remove: vi.fn(async (path: string) => {
 			delete files[path];
 		}),
@@ -136,7 +148,7 @@ describe('SidecarStore.scheduleSave', () => {
 		store.scheduleSave('a.pdf');
 		store.scheduleSave('a.pdf');
 		store.scheduleSave('a.pdf');
-		await vi.advanceTimersByTimeAsync(250);
+		await vi.advanceTimersByTimeAsync(750);
 		expect(fs.adapter.write).toHaveBeenCalledTimes(1);
 	});
 
@@ -182,8 +194,37 @@ describe('SidecarStore.isOwnSave', () => {
 
 	it('returns false when another device changed the file right after our save', async () => {
 		const { fs, store } = await savedStore();
-		fs.files['a.pdf.jot.json'] = validPayload;
+		fs.files['a.pdf.jot.json'] = validPayload.replace('#000', '#f00');
 		expect(await store.isOwnSave('a.pdf.jot.json')).toBe(false);
+	});
+
+	it('saves compact JSON (no indentation) to keep large files small', async () => {
+		const { fs } = await savedStore();
+		expect(fs.files['a.pdf.jot.json']).not.toContain('\n');
+	});
+
+	it('recognizes its own save from size and time, without reading the file back', async () => {
+		const fs = makeFs({}, true);
+		const strokes = new StrokeStore();
+		strokes.setForKey('a.pdf::1', [stroke]);
+		const store = new SidecarStore(fs.adapter, strokes);
+		await store.save('a.pdf');
+		vi.mocked(fs.adapter.read).mockClear();
+		expect(await store.isOwnSave('a.pdf.jot.json')).toBe(true);
+		expect(fs.adapter.read).not.toHaveBeenCalled();
+	});
+
+	it('spots a newer write by another device from its time, without reading', async () => {
+		const fs = makeFs({}, true);
+		const strokes = new StrokeStore();
+		strokes.setForKey('a.pdf::1', [stroke]);
+		const store = new SidecarStore(fs.adapter, strokes);
+		await store.save('a.pdf');
+		// Sync writes the same-size file again later.
+		await fs.adapter.write('a.pdf.jot.json', fs.files['a.pdf.jot.json']!);
+		vi.mocked(fs.adapter.read).mockClear();
+		expect(await store.isOwnSave('a.pdf.jot.json')).toBe(false);
+		expect(fs.adapter.read).not.toHaveBeenCalled();
 	});
 
 	it('forgets its write after a reload, so a later identical file still reloads', async () => {

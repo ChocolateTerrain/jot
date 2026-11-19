@@ -21,6 +21,8 @@ export class DockedToolbar {
 	private element: HTMLElement | null = null;
 	private placement: ToolbarPlacement = 'floating';
 	private popover = new ToolbarPopover();
+	private undoButton: HTMLButtonElement | null = null;
+	private redoButton: HTMLButtonElement | null = null;
 
 	constructor(
 		private palette: Palette,
@@ -58,6 +60,15 @@ export class DockedToolbar {
 		if (this.element) this.render();
 	}
 
+	/**
+	 * After a stroke only undo/redo availability changes; update just those
+	 * two buttons instead of rebuilding the whole toolbar.
+	 */
+	refreshHistory(): void {
+		if (this.undoButton) this.undoButton.disabled = !this.hooks.canUndo();
+		if (this.redoButton) this.redoButton.disabled = !this.hooks.canRedo();
+	}
+
 	private render(): void {
 		const host = this.element;
 		if (!host) return;
@@ -67,7 +78,7 @@ export class DockedToolbar {
 		toolbar.className = 'jot-docked-toolbar-controls';
 		toolbar.setAttribute('role', 'toolbar');
 		toolbar.setAttribute('aria-label', 'PDF annotation tools');
-		toolbar.appendChild(
+		this.undoButton = toolbar.appendChild(
 			this.iconButton(
 				doc,
 				'undo-2',
@@ -79,7 +90,7 @@ export class DockedToolbar {
 				!this.hooks.canUndo(),
 			),
 		);
-		toolbar.appendChild(
+		this.redoButton = toolbar.appendChild(
 			this.iconButton(
 				doc,
 				'redo-2',

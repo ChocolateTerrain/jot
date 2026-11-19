@@ -1,6 +1,7 @@
 import type { NormalizedPoint, Stroke } from './stroke-math';
 import { widthFactorForPressure } from './stroke-math';
 import { HIGHLIGHTER_WIDTH_FACTOR } from './stroke-render';
+import { roundPoint } from './stroke-compact';
 
 export interface PageSize {
 	width: number;
@@ -68,11 +69,8 @@ export function eraseCircleFromStroke(
 
 	// Pieces keep the original average pressure so pen thickness doesn't change.
 	const pressure = averagePressure(points);
-	const toNorm = (p: Px): NormalizedPoint => ({
-		x: p.x / page.width,
-		y: p.y / page.height,
-		pressure,
-	});
+	const toNorm = (p: Px): NormalizedPoint =>
+		roundPoint({ x: p.x / page.width, y: p.y / page.height, pressure });
 
 	const pieces: NormalizedPoint[][] = [];
 	let current: NormalizedPoint[] = [];

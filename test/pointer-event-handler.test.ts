@@ -35,6 +35,7 @@ function makeTouchList(touches: Touch[]): TouchList {
 function makeDrawingContext(): CanvasRenderingContext2D {
 	return {
 		setTransform: vi.fn(),
+		clearRect: vi.fn(),
 		beginPath: vi.fn(),
 		moveTo: vi.fn(),
 		lineTo: vi.fn(),
