@@ -645,3 +645,15 @@ body.jot-select-mode .jot-passthrough {
 	width: 16px;
 	height: 16px;
 }
+
+/* Annotations shown in embeds and hover previews: look only, never block. */
+.jot-overlay-canvas.jot-readonly {
+	pointer-events: none;
+}
+
+/* Obsidian tints text opened through a selection link; where that lands on
+   one of our highlights, let the highlight's own color show instead. */
+.textLayer .mod-focused.jot-tint-hidden {
+	background: transparent !important;
+	box-shadow: none !important;
+}

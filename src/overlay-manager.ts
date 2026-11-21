@@ -24,6 +24,8 @@ const IGNORED_LAYERS = '.textLayer, .annotationLayer';
 export const OVERLAY_KEY_ATTR = 'data-jot-key';
 /** On <body> while the select tool is active. */
 export const SELECT_MODE_CLASS = 'jot-select-mode';
+/** Overlays in embeds and hover previews: show annotations, take no input. */
+const READONLY_CLASS = 'jot-readonly';
 
 export class OverlayManager {
 	private containerObservers = new Map<WorkspaceLeaf, MutationObserver>();
@@ -119,6 +121,8 @@ export class OverlayManager {
 				.querySelectorAll(`.${PASSTHROUGH_CLASS}`)
 				.forEach((el) => el.classList.remove(PASSTHROUGH_CLASS));
 		});
+		// Hover previews live outside the workspace leaves.
+		activeDocument.querySelectorAll(`canvas.${READONLY_CLASS}`).forEach((el) => el.remove());
 	}
 
 	/**
@@ -155,7 +159,7 @@ export class OverlayManager {
 				// Generous margin: the widest a stroke can draw (highlighter, 4x).
 				const margin = stroke.width * 4 * surface.height;
 				const reach = grow(boundsOf(stroke.points), margin / surface.width, margin / surface.height);
-				if (intersects(reach, dirty)) drawStroke(ctx, stroke, surface);
+				if (intersects(reach, dirty)) drawStroke(ctx, stroke, surface, true);
 			}
 		}
 		ctx.restore();
@@ -171,6 +175,10 @@ export class OverlayManager {
 		this.app.workspace.iterateAllLeaves((leaf) => {
 			if (this.filePathForLeaf(leaf) !== pdfPath) return;
 			this.canvasesIn(leaf).forEach((canvas) => this.redrawPage(canvas));
+		});
+		const prefix = `${pdfPath}::`;
+		activeDocument.querySelectorAll<HTMLCanvasElement>(`canvas.${READONLY_CLASS}`).forEach((canvas) => {
+			if (canvas.getAttribute(OVERLAY_KEY_ATTR)?.startsWith(prefix)) this.redrawPage(canvas);
 		});
 	}
 
@@ -213,7 +221,21 @@ export class OverlayManager {
 			.forEach((page) => this.ensureOverlayOnPage(page, filePath));
 	}
 
-	private ensureOverlayOnPage(page: HTMLElement, filePath: string): void {
+	/** Show a PDF's annotations on a page outside a PDF tab (embed, hover preview). */
+	attachReadOnly(page: HTMLElement, filePath: string): void {
+		this.ensureOverlayOnPage(page, filePath, true);
+	}
+
+	/** The workspace leaf whose view contains `el`, if any. */
+	leafContaining(el: Element): WorkspaceLeaf | null {
+		let found: WorkspaceLeaf | null = null;
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			if (!found && leaf.view.containerEl.contains(el)) found = leaf;
+		});
+		return found;
+	}
+
+	private ensureOverlayOnPage(page: HTMLElement, filePath: string, readOnly = false): void {
 		const pageNumberAttr = page.getAttribute('data-page-number');
 		const pageNumber = pageNumberAttr ? parseInt(pageNumberAttr, 10) : NaN;
 		if (Number.isNaN(pageNumber)) return;
@@ -247,8 +269,12 @@ export class OverlayManager {
 		overlay.setAttribute(OVERLAY_KEY_ATTR, key);
 		this.sizeOverlayToPage(overlay, page);
 		host.appendChild(overlay);
-		this.disableTextLayerInteraction(page);
-		this.wireOverlay(overlay);
+		if (readOnly) {
+			overlay.classList.add(READONLY_CLASS);
+		} else {
+			this.disableTextLayerInteraction(page);
+			this.wireOverlay(overlay);
+		}
 		this.redrawPage(overlay);
 
 		if (this.observedPages.has(page)) return;
@@ -260,7 +286,7 @@ export class OverlayManager {
 		const mutationObserver = new MutationObserver(() => {
 			const current = findOverlay();
 			if (!current) return;
-			this.disableTextLayerInteraction(page);
+			if (!current.classList.contains(READONLY_CLASS)) this.disableTextLayerInteraction(page);
 			const currentHost = this.overlayHostForPage(page);
 			if (!currentHost.contains(current)) {
 				this.sizeOverlayToPage(current, page);

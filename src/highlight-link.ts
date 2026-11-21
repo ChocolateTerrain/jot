@@ -33,10 +33,16 @@ export function distanceToPolyline(c: Pt, pts: Pt[]): number {
 	return best;
 }
 
-/** True when a screen point lies on the drawn highlight. */
-export function hitsStroke(overlay: HTMLElement, stroke: Stroke, x: number, y: number): boolean {
+/** True when a screen point lies on the drawn highlight (within `extra` px). */
+export function hitsStroke(
+	overlay: HTMLElement,
+	stroke: Stroke,
+	x: number,
+	y: number,
+	extra = 0,
+): boolean {
 	const { pts, half } = strokeOnScreen(overlay, stroke);
-	return pts.length > 0 && distanceToPolyline({ x, y }, pts) <= Math.max(half, 6);
+	return pts.length > 0 && distanceToPolyline({ x, y }, pts) <= Math.max(half, 6) + extra;
 }
 
 /**
@@ -143,7 +149,7 @@ export interface HighlightLink {
  */
 export function buildHighlightLink(
 	app: App,
-	leaf: WorkspaceLeaf,
+	leaf: WorkspaceLeaf | null,
 	file: TFile,
 	pageNumber: number,
 	page: HTMLElement,
@@ -151,7 +157,7 @@ export function buildHighlightLink(
 	stroke: Stroke,
 ): HighlightLink {
 	const range = rangeUnderStroke(page, overlay, stroke);
-	const selection = range ? nativeSelectionParam(leaf, page, range) : null;
+	const selection = range && leaf ? nativeSelectionParam(leaf, page, range) : null;
 	const subpath = `#page=${pageNumber}${selection ? `&selection=${selection}` : ''}`;
 	const alias = `${file.basename}, p.${pageNumber}`;
 	const link = app.fileManager.generateMarkdownLink(file, '', subpath, alias);

@@ -1,7 +1,8 @@
-import { Notice, Plugin, TFile } from 'obsidian';
+import { Events, Notice, Plugin, TFile } from 'obsidian';
 import { DEFAULT_TOOL_STATE, Palette, ToolState } from './palette';
 import { DockedToolbar } from './docked-toolbar';
 import { HighlightLinkController } from './highlight-link-controller';
+import { EmbedWatcher } from './embed-watcher';
 import { DEFAULT_SETTINGS, JotSettings, JotSettingTab } from './settings';
 import { DEFAULT_TOOL_SIZES, SizeSettingsHost, sanitizeToolSizes } from './settings-sizes';
 import { clampPenHoldMs } from './pen-hold';
@@ -29,6 +30,7 @@ export default class JotPlugin extends Plugin {
 	private palette!: Palette;
 	private dockedToolbar: DockedToolbar | null = null;
 	private highlightLinks: HighlightLinkController | null = null;
+	private embeds: EmbedWatcher | null = null;
 	settings: JotSettings = { ...DEFAULT_SETTINGS };
 	private history = new UndoHistory();
 	private undoController!: UndoController;
@@ -146,6 +148,18 @@ export default class JotPlugin extends Plugin {
 			() => this.toolState.tool,
 		);
 		this.registerDomEvent(activeDocument, 'click', (e) => this.highlightLinks?.onClick(e));
+
+		this.embeds = new EmbedWatcher(this.app, this.overlays, this.strokes, (pdfPath) =>
+			this.loadIfNeeded(pdfPath),
+		);
+		this.embeds.start(activeDocument);
+		// Not in the typings, but Workspace is an Events and 'Page preview' fires it.
+		this.registerEvent(
+			(this.app.workspace as Events).on('hover-link', (data: unknown) => {
+				const { linktext, sourcePath } = (data ?? {}) as { linktext?: string; sourcePath?: string };
+				if (linktext) this.embeds?.noteHover(linktext, sourcePath ?? '');
+			}),
+		);
 		this.applyToolMode();
 
 		this.registerEvent(
@@ -193,6 +207,7 @@ export default class JotPlugin extends Plugin {
 	}
 
 	onunload() {
+		this.embeds?.stop();
 		this.highlightLinks?.hide();
 		activeDocument.body.removeClass(SELECT_MODE_CLASS);
 		this.overlays?.detachAll();
@@ -229,6 +244,15 @@ export default class JotPlugin extends Plugin {
 	}
 
 	private async ensureLoaded(pdfPath: string) {
+		await this.sidecar.load(pdfPath);
+	}
+
+	/**
+	 * Load a PDF's annotations for an embed or preview, unless they're already
+	 * in memory: reloading would drop strokes whose save is still pending.
+	 */
+	private async loadIfNeeded(pdfPath: string): Promise<void> {
+		if (this.strokes.hasFor(pdfPath) || this.sidecar.hasPendingSave(pdfPath)) return;
 		await this.sidecar.load(pdfPath);
 	}
 

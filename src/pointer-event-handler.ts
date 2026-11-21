@@ -68,6 +68,13 @@ export class PointerEventHandler {
 	/** Area erased since the last frame; redrawn once per frame, not per movement. */
 	private pendingDirty: Bounds | null = null;
 	private redrawFrame: number | null = null;
+	/**
+	 * Latest eraser position not yet erased up to. The Pencil reports up to
+	 * 240 positions a second; erasing runs once per frame along the path
+	 * from the last processed position instead of once per report.
+	 */
+	private pendingErase: { x: number; y: number } | null = null;
+	private eraserCursorRadius = -1;
 
 	constructor(
 		private canvas: HTMLCanvasElement,
@@ -189,6 +196,7 @@ export class PointerEventHandler {
 		this.removeHoldIndicator();
 		this.hideEraserCursor();
 		this.lastErase = null;
+		this.pendingErase = null;
 		this.gestureRect = null;
 		this.destroyDrawingPreview();
 		const { clientX, clientY } = this.state.pressedAt;
@@ -265,6 +273,7 @@ export class PointerEventHandler {
 	}
 
 	private finalizeEraserGesture(): void {
+		this.processPendingErase();
 		// A tap without moving erases under the pencil too.
 		if (!this.eraserMoved && this.lastErase && this.eraseSegment(null, this.lastErase)) {
 			this.state.markErased();
@@ -331,10 +340,18 @@ export class PointerEventHandler {
 		this.longPress.move(clientX, clientY);
 		this.showEraserCursor(clientX, clientY);
 		const p = this.toNormalized(clientX, clientY, 0);
-		const to = { x: p.x, y: p.y };
+		this.pendingErase = { x: p.x, y: p.y };
+		this.eraserMoved = true;
+		this.scheduleFrame();
+	}
+
+	/** Erase up to the latest pencil position (if any is pending). */
+	private processPendingErase(): void {
+		const to = this.pendingErase;
+		if (!to) return;
+		this.pendingErase = null;
 		if (this.eraseSegment(this.lastErase, to)) this.state.markErased();
 		this.lastErase = to;
-		this.eraserMoved = true;
 	}
 
 	private eraserRadiusPx(): number {
@@ -362,13 +379,23 @@ export class PointerEventHandler {
 
 	private queueRedraw(dirty: Bounds): void {
 		this.pendingDirty = union(this.pendingDirty, dirty);
-		if (this.redrawFrame !== null) return;
-		this.redrawFrame = window.requestAnimationFrame(() => this.flushRedraw());
+		this.scheduleFrame();
 	}
 
+	private scheduleFrame(): void {
+		if (this.redrawFrame !== null) return;
+		this.redrawFrame = window.requestAnimationFrame(() => {
+			this.redrawFrame = null;
+			this.processPendingErase();
+			this.flushRedraw();
+		});
+	}
+
+	/** Finish now: erase what's pending and redraw the changed area. */
 	private flushRedraw(): void {
 		if (this.redrawFrame !== null) window.cancelAnimationFrame(this.redrawFrame);
 		this.redrawFrame = null;
+		this.processPendingErase();
 		const dirty = this.pendingDirty;
 		this.pendingDirty = null;
 		if (dirty) this.deps.overlays.redrawPage(this.canvas, dirty);
@@ -409,12 +436,18 @@ export class PointerEventHandler {
 			activeDocument.body.appendChild(this.eraserCursor);
 		}
 		const style = this.eraserCursor.style;
-		style.width = `${2 * r}px`;
-		style.height = `${2 * r}px`;
+		// Resizing forces layout; only do it when the size actually changes.
+		// Moving is a transform, which the GPU handles without layout.
+		if (r !== this.eraserCursorRadius) {
+			style.width = `${2 * r}px`;
+			style.height = `${2 * r}px`;
+			this.eraserCursorRadius = r;
+		}
 		style.transform = `translate(${clientX - r}px, ${clientY - r}px)`;
 	}
 
 	private hideEraserCursor(): void {
+		this.eraserCursorRadius = -1;
 		this.eraserCursor?.remove();
 		this.eraserCursor = null;
 	}

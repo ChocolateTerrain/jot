@@ -218,8 +218,25 @@ function drawPenPolyline(
 	ctx.stroke();
 }
 
-export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, canvas: CanvasSize) {
+/**
+ * Draw one stroke. `live` is for redraws while erasing: highlights are drawn
+ * directly instead of through the cached bitmap, because erasing creates new
+ * pieces every frame and building a bitmap (a new canvas) for each is slow on
+ * iPad. Both ways look the same.
+ */
+export function drawStroke(
+	ctx: CanvasRenderingContext2D,
+	stroke: Stroke,
+	canvas: CanvasSize,
+	live = false,
+) {
 	if (stroke.tool === 'highlighter') {
+		if (live) {
+			if (stroke.points.length >= 2) {
+				drawHighlighterPath(ctx, stroke.points, stroke.color, stroke.width, canvas, HIGHLIGHTER_ALPHA);
+			}
+			return;
+		}
 		drawHighlighterPolyline(ctx, stroke.points, stroke.color, stroke.width, canvas);
 		return;
 	}

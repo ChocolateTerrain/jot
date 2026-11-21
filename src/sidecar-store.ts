@@ -74,6 +74,11 @@ export class SidecarStore {
 		}
 	}
 
+	/** A save is waiting: what's on disk is older than what's in memory. */
+	hasPendingSave(pdfPath: string): boolean {
+		return this.saveTimers.has(pdfPath);
+	}
+
 	scheduleSave(pdfPath: string): void {
 		const existing = this.saveTimers.get(pdfPath);
 		if (existing !== undefined) window.clearTimeout(existing);
