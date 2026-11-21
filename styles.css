@@ -608,3 +608,40 @@
 		transform: none;
 	}
 }
+
+/* Select tool: the drawing layer lets input through, and the PDF's own text
+   and link layers work again, so text can be selected and copied. */
+body.jot-select-mode .jot-overlay-canvas {
+	pointer-events: none;
+}
+
+body.jot-select-mode .jot-passthrough {
+	pointer-events: auto;
+}
+
+/* "Copy link" button next to a highlight. */
+.jot-link-chip {
+	position: fixed;
+	z-index: var(--layer-popover, 30);
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 34px;
+	padding: 0 12px !important;
+	border: 1px solid var(--background-modifier-border, #555);
+	border-radius: 17px;
+	background: var(--background-secondary, #30343b) !important;
+	color: var(--text-normal, #eee);
+	font-size: 13px;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+	white-space: nowrap;
+}
+
+.jot-link-chip-icon {
+	display: inline-flex;
+}
+
+.jot-link-chip-icon > svg {
+	width: 16px;
+	height: 16px;
+}

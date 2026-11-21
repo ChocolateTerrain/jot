@@ -1,6 +1,7 @@
 import { Notice, Plugin, TFile } from 'obsidian';
 import { DEFAULT_TOOL_STATE, Palette, ToolState } from './palette';
 import { DockedToolbar } from './docked-toolbar';
+import { HighlightLinkController } from './highlight-link-controller';
 import { DEFAULT_SETTINGS, JotSettings, JotSettingTab } from './settings';
 import { DEFAULT_TOOL_SIZES, SizeSettingsHost, sanitizeToolSizes } from './settings-sizes';
 import { clampPenHoldMs } from './pen-hold';
@@ -19,6 +20,9 @@ export type { Handedness } from './palette';
 
 const PLUGIN_LOG = '[jot]';
 
+/** On <body> while the select tool is active. */
+const SELECT_MODE_CLASS = 'jot-select-mode';
+
 export default class JotPlugin extends Plugin {
 	private strokes = new StrokeStore();
 	private sidecar!: SidecarStore;
@@ -27,6 +31,7 @@ export default class JotPlugin extends Plugin {
 	private toolState: ToolState = { ...DEFAULT_TOOL_STATE };
 	private palette!: Palette;
 	private dockedToolbar: DockedToolbar | null = null;
+	private highlightLinks: HighlightLinkController | null = null;
 	settings: JotSettings = { ...DEFAULT_SETTINGS };
 	private history = new UndoHistory();
 	private undoController!: UndoController;
@@ -111,6 +116,7 @@ export default class JotPlugin extends Plugin {
 				this.settings.highlighterState = mem.highlighter;
 				this.settings.eraserWidth = mem.eraserWidth;
 				void this.saveSettings();
+				this.applyToolMode();
 				this.dockedToolbar?.refresh();
 			},
 			{
@@ -135,6 +141,15 @@ export default class JotPlugin extends Plugin {
 			getColors: () => this.settings.colors,
 			setWidthPreset: (tool, index, width) => this.sizeSettings.updateSize(tool, index, width),
 		});
+
+		this.highlightLinks = new HighlightLinkController(
+			this.app,
+			this.strokes,
+			this.overlays,
+			() => this.toolState.tool,
+		);
+		this.registerDomEvent(activeDocument, 'click', (e) => this.highlightLinks?.onClick(e));
+		this.applyToolMode();
 
 		this.registerEvent(
 			this.app.workspace.on('file-open', async (file: TFile | null) => {
@@ -181,10 +196,18 @@ export default class JotPlugin extends Plugin {
 	}
 
 	onunload() {
+		this.highlightLinks?.hide();
+		activeDocument.body.removeClass(SELECT_MODE_CLASS);
 		this.overlays?.detachAll();
 		this.sidecar?.cancelAllPending();
 		this.palette?.hide();
 		this.dockedToolbar?.hide();
+	}
+
+	/** The select tool lets input through to the PDF (see styles.css). */
+	private applyToolMode(): void {
+		activeDocument.body.toggleClass(SELECT_MODE_CLASS, this.toolState.tool === 'select');
+		if (this.toolState.tool === 'select') this.highlightLinks?.hide();
 	}
 
 	private syncDockedToolbar(): void {
@@ -242,6 +265,7 @@ export default class JotPlugin extends Plugin {
 			straightenHighlighter: () => this.settings.straightenHighlighter,
 			twoFingerDoubleTapUndo: () => this.settings.twoFingerDoubleTapUndo,
 			twoFingerHoldOpensPalette: () => this.settings.twoFingerHoldOpensPalette,
+			onHighlightDrawn: (canvas, stroke, x, y) => this.highlightLinks?.offer(canvas, stroke, x, y),
 			onHistoryChange: () => this.dockedToolbar?.refreshHistory(),
 		}).attach();
 	}

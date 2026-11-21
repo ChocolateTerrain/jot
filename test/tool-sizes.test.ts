@@ -1,14 +1,14 @@
 /* eslint-disable obsidianmd/prefer-active-doc */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DockedToolbar } from '../src/docked-toolbar';
-import { DEFAULT_TOOL_STATE, PALETTE_WIDTHS, Palette, Tool } from '../src/palette';
+import { DEFAULT_TOOL_STATE, DrawTool, PALETTE_WIDTHS, Palette, Tool } from '../src/palette';
 import { DEFAULT_TOOL_SIZES, sanitizeToolSizes } from '../src/settings-sizes';
 
 afterEach(() => {
 	document.body.innerHTML = '';
 });
 
-const SIZES: Record<Tool, number[]> = {
+const SIZES: Record<DrawTool, number[]> = {
 	pen: [0.001, 0.002, 0.003],
 	highlighter: [0.004, 0.006, 0.008],
 	eraser: [0.005, 0.01, 0.015],
@@ -21,7 +21,7 @@ function setup() {
 		onRedo: vi.fn(),
 		canUndo: () => false,
 		canRedo: () => false,
-		getWidths: (tool: Tool) => SIZES[tool],
+		getWidths: (tool: DrawTool) => SIZES[tool],
 	};
 	const palette = new Palette({ ...DEFAULT_TOOL_STATE, tool: 'pen', width: 0.002 }, onChange, hooks);
 	const toolbar = new DockedToolbar(palette, hooks);
@@ -111,7 +111,7 @@ describe('toolbar size pop-up', () => {
 			onRedo: vi.fn(),
 			canUndo: () => false,
 			canRedo: () => false,
-			getWidths: (tool: Tool) => SIZES[tool],
+			getWidths: (tool: DrawTool) => SIZES[tool],
 			setWidthPreset,
 		};
 		const palette = new Palette({ ...DEFAULT_TOOL_STATE, ...state }, () => {}, hooks);

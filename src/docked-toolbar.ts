@@ -9,6 +9,7 @@ import {
 } from './palette';
 
 const TOOLS: { id: Tool; icon: string; label: string }[] = [
+	{ id: 'select', icon: 'mouse-pointer-2', label: 'Select' },
 	{ id: 'pen', icon: 'pencil', label: 'Pen' },
 	{ id: 'highlighter', icon: 'highlighter', label: 'Highlighter' },
 	{ id: 'eraser', icon: 'eraser', label: 'Eraser' },
@@ -120,6 +121,11 @@ export class DockedToolbar {
 			if (state.tool === tool.id) button.classList.add('is-active');
 			toolbar.appendChild(button);
 		}
+		// The select tool doesn't draw: no sizes or colors.
+		if (state.tool === 'select') {
+			host.appendChild(toolbar);
+			return;
+		}
 		toolbar.appendChild(this.separator(doc));
 
 		const widths = this.palette.widthsFor(state.tool);
@@ -209,16 +215,18 @@ export class DockedToolbar {
 	private toggleSizePopover(anchor: HTMLElement): void {
 		this.popover.toggle('size', anchor, 'jot-dock-size-popover', (popover) => {
 			const state = this.palette.getState();
-			const presetIndex = this.palette.widthsFor(state.tool).indexOf(state.width);
+			const tool = state.tool;
+			if (tool === 'select') return;
+			const presetIndex = this.palette.widthsFor(tool).indexOf(state.width);
 			fillSizeSlider(popover, {
-				tool: state.tool,
+				tool,
 				presetIndex,
 				width: state.width,
 				color: state.color,
 				onCommit: (width) => {
 					if (presetIndex >= 0 && this.hooks.setWidthPreset) {
 						// Changes that size button for good, same as in settings.
-						void this.hooks.setWidthPreset(state.tool, presetIndex, width);
+						void this.hooks.setWidthPreset(tool, presetIndex, width);
 					} else {
 						this.palette.setWidth(width);
 					}

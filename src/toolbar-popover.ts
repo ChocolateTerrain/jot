@@ -1,5 +1,5 @@
 import { OutsideCloseListener } from './outside-close-listener';
-import type { Tool } from './palette';
+import type { DrawTool } from './palette';
 import { eraserRadiusFor } from './stroke-erase';
 import { HIGHLIGHTER_ALPHA, HIGHLIGHTER_WIDTH_FACTOR } from './stroke-render';
 
@@ -85,10 +85,10 @@ const PREVIEW_PAGE_PX = 400;
 const PREVIEW_HEIGHT = 64;
 const PREVIEW_WIDTH = 200;
 
-const TOOL_NAMES: Record<Tool, string> = { pen: 'Pen', highlighter: 'Highlighter', eraser: 'Eraser' };
+const TOOL_NAMES: Record<DrawTool, string> = { pen: 'Pen', highlighter: 'Highlighter', eraser: 'Eraser' };
 
 export interface SizeSliderOptions {
-	tool: Tool;
+	tool: DrawTool;
 	/** Which preset (0-3) is being edited, or -1 if the current size isn't a preset. */
 	presetIndex: number;
 	width: number;
@@ -137,7 +137,7 @@ function clampToSlider(value: number): number {
 	return Math.max(SIZE_MIN, Math.min(SIZE_MAX, stepped));
 }
 
-function drawPreview(svg: SVGElement, tool: Tool, width: number, color: string): void {
+function drawPreview(svg: SVGElement, tool: DrawTool, width: number, color: string): void {
 	const doc = svg.ownerDocument;
 	const svgNs = 'http://www.w3.org/2000/svg';
 	svg.replaceChildren();

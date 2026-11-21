@@ -8,7 +8,7 @@ import { OVERLAY_KEY_ATTR, OverlayManager } from './overlay-manager';
 import type { PenHoldSettings } from './pen-hold';
 import { PenStrokeState } from './pen-stroke-state';
 import type { SidecarStore } from './sidecar-store';
-import type { NormalizedPoint } from './stroke-math';
+import type { NormalizedPoint, Stroke } from './stroke-math';
 import { eraseAlongPath, eraserRadiusFor } from './stroke-erase';
 import { compactPoints, roundPoint } from './stroke-compact';
 import type { StrokeStore } from './stroke-store';
@@ -38,6 +38,8 @@ export interface PointerEventHandlerDeps {
 	straightenHighlighter?: () => boolean;
 	twoFingerDoubleTapUndo?: () => boolean;
 	twoFingerHoldOpensPalette?: () => boolean;
+	/** A highlight stroke was just saved; (clientX, clientY) is where it ended. */
+	onHighlightDrawn?: (canvas: HTMLCanvasElement, stroke: Stroke, clientX: number, clientY: number) => void;
 	onHistoryChange?: () => void;
 }
 
@@ -120,6 +122,8 @@ export class PointerEventHandler {
 			return;
 		}
 		if (e.pointerType !== 'pen' && e.pointerType !== 'mouse') return;
+		// With the select tool the overlay ignores input (CSS), but be safe.
+		if (this.deps.toolState().tool === 'select') return;
 		if (this.stylusTouchId !== null) return;
 		if (this.deps.palette.isOpen()) return;
 
@@ -292,14 +296,24 @@ export class PointerEventHandler {
 			}
 			const straighten =
 				tool.tool === 'highlighter' && (this.deps.straightenHighlighter?.() ?? false);
-			this.deps.strokes.appendToKey(key, {
+			const stroke: Stroke = {
 				points: straighten
 					? straightenPoints(points, rect.width, rect.height).map(roundPoint)
 					: compactPoints(points, rect.width, rect.height),
 				color: tool.color,
 				width: tool.width,
 				tool: tool.tool,
-			});
+			};
+			this.deps.strokes.appendToKey(key, stroke);
+			const end = stroke.points[stroke.points.length - 1];
+			if (tool.tool === 'highlighter' && end) {
+				this.deps.onHighlightDrawn?.(
+					this.canvas,
+					stroke,
+					rect.left + end.x * rect.width,
+					rect.top + end.y * rect.height,
+				);
+			}
 			if (pdfPath) this.deps.sidecar.scheduleSave(pdfPath);
 		}
 		this.state.reset();
@@ -412,6 +426,7 @@ export class PointerEventHandler {
 
 	private onStylusTouchStart(e: TouchEvent): void {
 		if (this.activePointerId !== null || this.stylusTouchId !== null) return;
+		if (this.deps.toolState().tool === 'select') return;
 		const touch = this.stylusTouchFrom(e.changedTouches);
 		if (!touch) return;
 		this.twoFingerHold.cancel();

@@ -1,8 +1,8 @@
 import { Setting, SliderComponent } from 'obsidian';
-import { PALETTE_WIDTHS, Tool } from './palette';
+import { DrawTool, PALETTE_WIDTHS } from './palette';
 
 /** The three size presets for each tool, as fractions of page height. */
-export type ToolSizes = Record<Tool, number[]>;
+export type ToolSizes = Record<DrawTool, number[]>;
 
 export const DEFAULT_TOOL_SIZES: ToolSizes = {
 	pen: [...PALETTE_WIDTHS],
@@ -17,7 +17,7 @@ const SLIDER_MIN = 0.5;
 const SLIDER_MAX = 20;
 const SLIDER_STEP = 0.5;
 
-const TOOL_LABELS: { tool: Tool; label: string }[] = [
+const TOOL_LABELS: { tool: DrawTool; label: string }[] = [
 	{ tool: 'pen', label: 'Pen' },
 	{ tool: 'highlighter', label: 'Highlighter' },
 	{ tool: 'eraser', label: 'Eraser' },
@@ -49,7 +49,7 @@ export function sanitizeToolSizes(stored: unknown): ToolSizes {
 
 export interface SizeSettingsHost {
 	sizes(): ToolSizes;
-	updateSize(tool: Tool, index: number, width: number): Promise<void>;
+	updateSize(tool: DrawTool, index: number, width: number): Promise<void>;
 	resetSizes(): Promise<void>;
 }
 
@@ -61,7 +61,7 @@ export function renderSizeSettings(containerEl: HTMLElement, host: SizeSettingsH
 		)
 		.setHeading();
 
-	const sliders: { tool: Tool; index: number; slider: SliderComponent }[] = [];
+	const sliders: { tool: DrawTool; index: number; slider: SliderComponent }[] = [];
 	for (const { tool, label } of TOOL_LABELS) {
 		host.sizes()[tool].forEach((width, index) => {
 			new Setting(containerEl).setName(`${label} size ${index + 1}`).addSlider((slider) => {

@@ -22,7 +22,10 @@ import {
 	subSlotOffset,
 } from './palette-geometry';
 
-export type Tool = 'pen' | 'highlighter' | 'eraser';
+/** Tools that draw or erase, and so have sizes. */
+export type DrawTool = 'pen' | 'highlighter' | 'eraser';
+/** 'select' leaves the PDF alone so text can be selected and copied. */
+export type Tool = DrawTool | 'select';
 export type Handedness = 'right' | 'left';
 
 export interface ToolState {
@@ -89,9 +92,9 @@ export interface PaletteHooks {
 	canRedo: () => boolean;
 	getColors?: () => string[];
 	/** Size presets for a tool (the four width buttons). */
-	getWidths?: (tool: Tool) => readonly number[];
+	getWidths?: (tool: DrawTool) => readonly number[];
 	/** Change one of a tool's size presets (from the toolbar's size slider). */
-	setWidthPreset?: (tool: Tool, index: number, width: number) => void | Promise<void>;
+	setWidthPreset?: (tool: DrawTool, index: number, width: number) => void | Promise<void>;
 }
 
 const SUB_SLOT_OF: Record<Exclude<SubArc, null>, number> = {
@@ -110,6 +113,7 @@ const TOOL_ICON: Record<Tool, string> = {
 	pen: 'pencil',
 	highlighter: 'highlighter',
 	eraser: 'eraser',
+	select: 'mouse-pointer-2',
 };
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -423,6 +427,7 @@ export class Palette {
 
 	/** The size presets for a tool (defaults to the current tool). */
 	widthsFor(tool: Tool = this.state.tool): readonly number[] {
+		if (tool === 'select') return [];
 		return this.hooks.getWidths?.(tool) ?? PALETTE_WIDTHS;
 	}
 
@@ -434,7 +439,7 @@ export class Palette {
 	 * A size preset changed in settings: if the tool was using the old size,
 	 * move it to the new one so the same button stays selected.
 	 */
-	replaceWidth(tool: Tool, oldWidth: number, newWidth: number): void {
+	replaceWidth(tool: DrawTool, oldWidth: number, newWidth: number): void {
 		const memory = this.memoryFor(tool);
 		if (memory && memory.width === oldWidth) memory.width = newWidth;
 		if (tool === 'eraser' && this.eraserWidth === oldWidth) this.eraserWidth = newWidth;
