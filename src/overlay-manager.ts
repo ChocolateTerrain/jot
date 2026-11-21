@@ -36,6 +36,16 @@ export class OverlayManager {
 	// Tracked here rather than in the DOM: 1.0.8 left its marker attribute on
 	// pages whose observers it never disconnected.
 	private observedPages = new WeakSet<HTMLElement>();
+	/**
+	 * What each known page shows. Overlays (and their per-page observers) exist
+	 * only for pages near the viewport; this lets the visibility observer
+	 * recreate them. A 900-page PDF would otherwise carry 900 canvases and
+	 * 1800 observers that the browser checks every frame.
+	 */
+	private pageInfo = new WeakMap<HTMLElement, { filePath: string; readOnly: boolean }>();
+	private observersByPage = new Map<HTMLElement, (MutationObserver | ResizeObserver)[]>();
+	/** Called after an overlay is created and drawn on a page. */
+	onOverlayReady: ((page: HTMLElement) => void) | null = null;
 
 	constructor(
 		private app: App,
@@ -107,6 +117,9 @@ export class OverlayManager {
 		this.swipeGuards.clear();
 		this.pageObservers.forEach((observer) => observer.disconnect());
 		this.pageObservers.clear();
+		this.observersByPage.forEach((list) => list.forEach((observer) => observer.disconnect()));
+		this.observersByPage.clear();
+		this.pageInfo = new WeakMap();
 		this.visibilityObserver = null;
 		this.visiblePages = new WeakSet();
 		this.observedPages = new WeakSet();
@@ -235,13 +248,30 @@ export class OverlayManager {
 		return found;
 	}
 
+	/** True when `el` is inside a PDF tab of the workspace (not a preview). */
+	isInPdfTab(el: Element): boolean {
+		let found = false;
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			if (!found && leaf.view.getViewType?.() === 'pdf' && leaf.view.containerEl.contains(el)) {
+				found = true;
+			}
+		});
+		return found;
+	}
+
 	private ensureOverlayOnPage(page: HTMLElement, filePath: string, readOnly = false): void {
 		const pageNumberAttr = page.getAttribute('data-page-number');
 		const pageNumber = pageNumberAttr ? parseInt(pageNumberAttr, 10) : NaN;
 		if (Number.isNaN(pageNumber)) return;
 		const key = pageKey(filePath, pageNumber);
-		const host = this.overlayHostForPage(page);
+		this.pageInfo.set(page, { filePath, readOnly });
 		this.observePageVisibility(page);
+		// Far from the viewport: no overlay until it comes near.
+		if (!this.visiblePages.has(page)) {
+			this.teardownPage(page);
+			return;
+		}
+		const host = this.overlayHostForPage(page);
 
 		page.querySelector(LEGACY_OVERLAY_SELECTOR)?.remove();
 		const existing = page.querySelector<HTMLCanvasElement>(`canvas.${OVERLAY_CLASS}`);
@@ -276,6 +306,7 @@ export class OverlayManager {
 			this.wireOverlay(overlay);
 		}
 		this.redrawPage(overlay);
+		this.onOverlayReady?.(page);
 
 		if (this.observedPages.has(page)) return;
 		this.observedPages.add(page);
@@ -295,7 +326,6 @@ export class OverlayManager {
 			}
 		});
 		mutationObserver.observe(page, { childList: true });
-		this.pageObservers.add(mutationObserver);
 
 		const resizeObserver = new ResizeObserver(() => {
 			const current = findOverlay();
@@ -304,7 +334,17 @@ export class OverlayManager {
 			this.redrawPage(current);
 		});
 		resizeObserver.observe(page);
-		this.pageObservers.add(resizeObserver);
+		this.observersByPage.set(page, [mutationObserver, resizeObserver]);
+	}
+
+	/** Drop a page's overlay and observers (it scrolled far away). */
+	private teardownPage(page: HTMLElement): void {
+		page.querySelector(`canvas.${OVERLAY_CLASS}`)?.remove();
+		const observers = this.observersByPage.get(page);
+		if (!observers) return;
+		observers.forEach((observer) => observer.disconnect());
+		this.observersByPage.delete(page);
+		this.observedPages.delete(page);
 	}
 
 	private overlayHostForPage(page: HTMLElement): HTMLElement {
@@ -329,18 +369,24 @@ export class OverlayManager {
 				(entries) => {
 					for (const entry of entries) {
 						const targetPage = entry.target as HTMLElement;
-					const overlay = targetPage.querySelector<HTMLCanvasElement>(
-						`canvas.${OVERLAY_CLASS}`,
-					);
-					if (!overlay) continue;
-					if (entry.isIntersecting) {
+						if (!entry.isIntersecting) {
+							this.visiblePages.delete(targetPage);
+							this.teardownPage(targetPage);
+							continue;
+						}
 						this.visiblePages.add(targetPage);
-						this.sizeOverlayToPage(overlay, targetPage);
-						this.redrawPage(overlay);
-					} else {
-						this.visiblePages.delete(targetPage);
-						applyBackingStoreSize(overlay, 0, 0, 1);
-					}
+						const overlay = targetPage.querySelector<HTMLCanvasElement>(
+							`canvas.${OVERLAY_CLASS}`,
+						);
+						if (overlay) {
+							this.sizeOverlayToPage(overlay, targetPage);
+							this.redrawPage(overlay);
+							continue;
+						}
+						const info = this.pageInfo.get(targetPage);
+						if (info && targetPage.isConnected) {
+							this.ensureOverlayOnPage(targetPage, info.filePath, info.readOnly);
+						}
 					}
 				},
 				{ rootMargin: '100% 0px' },

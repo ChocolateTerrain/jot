@@ -153,6 +153,8 @@ export default class JotPlugin extends Plugin {
 			this.loadIfNeeded(pdfPath),
 		);
 		this.embeds.start(activeDocument);
+		// Overlays come and go with scrolling; check Obsidian's link tint each time one appears.
+		this.overlays.onOverlayReady = (page) => this.embeds?.checkTints(page);
 		// Not in the typings, but Workspace is an Events and 'Page preview' fires it.
 		this.registerEvent(
 			(this.app.workspace as Events).on('hover-link', (data: unknown) => {

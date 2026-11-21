@@ -4,9 +4,11 @@ import type { App } from 'obsidian';
 import { EmbedWatcher } from '../src/embed-watcher';
 import { OverlayManager } from '../src/overlay-manager';
 import { StrokeStore } from '../src/stroke-store';
+import { VisibleIntersectionObserver } from './visible-io';
 
 beforeAll(() => {
 	(window as { activeDocument?: Document }).activeDocument = document;
+	vi.stubGlobal('IntersectionObserver', VisibleIntersectionObserver);
 });
 
 let watcher: EmbedWatcher | null = null;
@@ -23,7 +25,10 @@ const frame = async () => {
 	await new Promise((r) => window.setTimeout(r, 0));
 };
 
+const tabs: { view: { getViewType: () => string; containerEl: HTMLElement; file?: unknown } }[] = [];
+
 function setup() {
+	tabs.length = 0;
 	const strokes = new StrokeStore();
 	strokes.appendToKey('Books/Turbulent.pdf::205', {
 		tool: 'highlighter',
@@ -35,7 +40,10 @@ function setup() {
 		],
 	});
 	const app = {
-		workspace: { getMostRecentLeaf: () => null, iterateAllLeaves: () => {} },
+		workspace: {
+			getMostRecentLeaf: () => null,
+			iterateAllLeaves: (cb: (leaf: unknown) => void) => tabs.forEach(cb),
+		},
 		metadataCache: {
 			getFirstLinkpathDest: (path: string) =>
 				path === 'Turbulent.pdf' || path === 'Turbulent'
@@ -86,13 +94,30 @@ describe('annotations in embeds and hover previews', () => {
 	it('leaves pages in PDF tabs to the main overlay logic', async () => {
 		setup();
 		const tab = document.body.appendChild(document.createElement('div'));
-		tab.className = 'workspace-leaf-content';
-		tab.setAttribute('data-type', 'pdf');
+		tabs.push({ view: { getViewType: () => 'pdf', containerEl: tab } });
 		const embed = tab.appendChild(document.createElement('div'));
 		embed.setAttribute('src', 'Turbulent.pdf');
 		embed.appendChild(pdfPage(1));
 		await frame();
 		expect(tab.querySelector('canvas')).toBeNull();
+	});
+
+	it('treats a PDF view inside a hover preview as a preview, using its file', async () => {
+		setup();
+		const popover = document.body.appendChild(document.createElement('div'));
+		popover.className = 'popover hover-popover';
+		const view = popover.appendChild(document.createElement('div'));
+		tabs.push({
+			view: {
+				getViewType: () => 'pdf',
+				containerEl: view,
+				file: { path: 'Books/Turbulent.pdf', extension: 'pdf' },
+			},
+		});
+		view.appendChild(pdfPage(205));
+		await frame();
+		const overlay = view.querySelector('canvas.jot-readonly');
+		expect(overlay?.getAttribute('data-jot-key')).toBe('Books/Turbulent.pdf::205');
 	});
 });
 

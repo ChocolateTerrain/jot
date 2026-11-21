@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { App } from 'obsidian';
 import { OverlayManager } from '../src/overlay-manager';
 import { StrokeStore } from '../src/stroke-store';
+import { VisibleIntersectionObserver } from './visible-io';
 
 // Large-PDF behaviour: Obsidian's PDF viewer keeps rewriting text layers while
 // you scroll. That must not make the plugin re-measure or redraw every page.
@@ -38,6 +39,7 @@ const flush = async () => {
 
 beforeAll(() => {
 	(window as { activeDocument?: Document }).activeDocument = document;
+	vi.stubGlobal('IntersectionObserver', VisibleIntersectionObserver);
 });
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -177,5 +179,47 @@ describe('select tool on iPad', () => {
 		expect(reachedApp).toHaveBeenCalledTimes(3);
 		document.body.classList.remove('jot-select-mode');
 		document.removeEventListener('touchstart', reachedApp);
+	});
+});
+
+describe('a 900-page PDF', () => {
+	it('only has canvases and per-page observers for pages near the viewport', () => {
+		let report!: IntersectionObserverCallback;
+		const observed: Element[] = [];
+		class FakeIntersectionObserver {
+			constructor(callback: IntersectionObserverCallback) {
+				report = callback;
+			}
+			observe(target: Element) {
+				observed.push(target);
+			}
+			disconnect() {}
+		}
+		vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+		let resizeObservers = 0;
+		class CountingResizeObserver {
+			constructor() {
+				resizeObservers++;
+			}
+			observe() {}
+			disconnect() {}
+		}
+		vi.stubGlobal('ResizeObserver', CountingResizeObserver);
+		const { app, containerEl } = bigPdf(900);
+		const manager = new OverlayManager(app, new StrokeStore(), () => {});
+		manager.attachToActivePdf();
+		const pages = containerEl.querySelectorAll<HTMLElement>('.page');
+		// The browser reports the three pages on screen as visible.
+		report(
+			[0, 1, 2].map((i) => ({ target: pages[i]!, isIntersecting: true }) as unknown as IntersectionObserverEntry),
+			{} as IntersectionObserver,
+		);
+		// One visibility check per page (a repeat observe of the same page is a no-op).
+		expect(new Set(observed).size).toBe(900);
+		expect(containerEl.querySelectorAll('canvas.jot-overlay-canvas')).toHaveLength(3);
+		expect(resizeObservers).toBe(3);
+		manager.detachAll();
+		vi.unstubAllGlobals();
+		vi.stubGlobal('IntersectionObserver', VisibleIntersectionObserver);
 	});
 });

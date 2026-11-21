@@ -1,8 +1,9 @@
 /* eslint-disable obsidianmd/prefer-active-doc */
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { App } from 'obsidian';
 import { OverlayManager } from '../src/overlay-manager';
 import { StrokeStore } from '../src/stroke-store';
+import { VisibleIntersectionObserver } from './visible-io';
 
 function pdfLeafWithPages(pageCount: number) {
 	const containerEl = document.createElement('div');
@@ -27,6 +28,10 @@ function appWith(leaf: ReturnType<typeof pdfLeafWithPages>): App {
 
 beforeAll(() => {
 	(window as { activeDocument?: Document }).activeDocument = document;
+});
+
+beforeEach(() => {
+	vi.stubGlobal('IntersectionObserver', VisibleIntersectionObserver);
 });
 
 afterEach(() => {
@@ -91,7 +96,7 @@ describe('OverlayManager plugin reload', () => {
 		expect(wired).toHaveLength(1);
 	});
 
-	it('allocates backing stores only while pages are near the viewport', () => {
+	it('keeps overlays only on pages near the viewport', () => {
 		let visibilityCallback!: IntersectionObserverCallback;
 		class FakeIntersectionObserver {
 			constructor(callback: IntersectionObserverCallback) {
@@ -110,30 +115,29 @@ describe('OverlayManager plugin reload', () => {
 		for (const page of pages) {
 			page.getBoundingClientRect = () => ({ width: 800, height: 1000 }) as DOMRect;
 		}
-		const manager = new OverlayManager(appWith(leaf), new StrokeStore(), () => {});
+		const wired: HTMLCanvasElement[] = [];
+		const manager = new OverlayManager(appWith(leaf), new StrokeStore(), (c) => wired.push(c));
 		manager.attachToActivePdf();
+		const overlays = () => leaf.view.containerEl.querySelectorAll<HTMLCanvasElement>('canvas.jot-overlay-canvas');
+		// Nothing reported visible yet: no canvases at all.
+		expect(overlays()).toHaveLength(0);
 
-		const canvases: HTMLCanvasElement[] = [];
-		leaf.view.containerEl
-			.querySelectorAll<HTMLCanvasElement>('canvas.jot-overlay-canvas')
-			.forEach((canvas) => canvases.push(canvas));
-		expect(canvases.map((canvas) => canvas.width * canvas.height)).toEqual([0, 0, 0]);
+		const report = (page: HTMLElement, isIntersecting: boolean) =>
+			visibilityCallback(
+				[{ target: page, isIntersecting } as unknown as IntersectionObserverEntry],
+				{} as IntersectionObserver,
+			);
+		report(pages[0]!, true);
+		expect(overlays()).toHaveLength(1);
+		expect(overlays()[0]!.width * overlays()[0]!.height).toBe(800_000);
+		expect(wired).toHaveLength(1);
 
-		visibilityCallback(
-			[
-				{ target: pages[0]!, isIntersecting: true } as unknown as IntersectionObserverEntry,
-			],
-			{} as IntersectionObserver,
-		);
-		expect(canvases[0]!.width * canvases[0]!.height).toBe(800_000);
-
-		visibilityCallback(
-			[
-				{ target: pages[0]!, isIntersecting: false } as unknown as IntersectionObserverEntry,
-			],
-			{} as IntersectionObserver,
-		);
-		expect(canvases[0]!.width * canvases[0]!.height).toBe(0);
+		// Scrolled far away: the canvas goes, and comes back (re-wired) later.
+		report(pages[0]!, false);
+		expect(overlays()).toHaveLength(0);
+		report(pages[0]!, true);
+		expect(overlays()).toHaveLength(1);
+		expect(wired).toHaveLength(2);
 	});
 
 	it('aligns the overlay to the PDF canvas wrapper inside the page', () => {

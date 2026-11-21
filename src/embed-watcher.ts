@@ -96,7 +96,9 @@ export class EmbedWatcher {
 	private async attach(page: HTMLElement): Promise<void> {
 		if (!page.isConnected || !page.hasAttribute('data-page-number')) return;
 		// Pages in a PDF tab are handled by OverlayManager.attachToActivePdf.
-		if (page.closest('.workspace-leaf-content[data-type="pdf"]')) return;
+		// A hover preview may host a PDF view of its own; that still counts as
+		// a preview.
+		if (!page.closest('.popover') && this.overlays.isInPdfTab(page)) return;
 		if (page.querySelector(OVERLAY_SELECTOR)) return;
 		const pdfPath = this.resolvePdf(page);
 		if (!pdfPath) return;
@@ -113,6 +115,10 @@ export class EmbedWatcher {
 			const file = this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
 			return file?.extension === 'pdf' ? file.path : null;
 		};
+		// A PDF view inside the preview knows its file.
+		const leaf = this.overlays.leafContaining(page);
+		const viewFile = (leaf?.view as { file?: { path: string; extension: string } } | undefined)?.file;
+		if (viewFile?.extension === 'pdf') return viewFile.path;
 		const src = page.closest('[src]')?.getAttribute('src');
 		const fromSrc = src ? resolve(src, this.lastHover?.sourcePath ?? '') : null;
 		if (fromSrc) return fromSrc;
