@@ -462,49 +462,94 @@ function isElement(node: Node): node is Element {
 }
 
 /**
- * With the select tool, a finger drag on a PDF page (e.g. moving a text
- * selection handle) is for the PDF. Obsidian on iPad would take a sideways
- * drag as "swipe to open a sidebar", so stop page touches from bubbling up to
- * it. They still reach the page itself; scrolling and selecting are native and
- * unaffected. Returns a function that removes the guard.
+ * Select-tool touch handling on a PDF view's pages (iPad):
+ * - While text is selected, finger movement (dragging a selection handle)
+ *   doesn't bubble up to Obsidian, which would take a sideways drag as
+ *   "swipe to open a sidebar". Touch start and end always reach Obsidian:
+ *   holding a finger on a word to select it depends on them.
+ * - A quick tap away from the selected text clears the selection. Safari
+ *   normally does this itself, but not inside Obsidian's PDF view. A tap on
+ *   the selection is left alone so iPad's Copy menu still works.
+ * Returns a function that removes the listeners.
  */
 function guardSelectionSwipes(container: HTMLElement): () => void {
-	// Only finger *movement*, and only while text is selected (i.e. while
-	// dragging a selection handle). Touch start and end must reach Obsidian:
-	// holding a finger on a word to select it depends on them.
+	const doc = container.ownerDocument;
 	let stopped = 0;
-	const stop = (e: TouchEvent) => {
-		const doc = container.ownerDocument;
-		if (!doc.body.classList.contains(SELECT_MODE_CLASS)) return;
-		const selection = doc.getSelection();
-		if (!selection || selection.isCollapsed) return;
+	let tapStart: { x: number; y: number; time: number } | null = null;
+	const onPage = (e: TouchEvent): boolean => {
+		if (!doc.body.classList.contains(SELECT_MODE_CLASS)) return false;
 		const target = e.target as HTMLElement | null;
-		if (!target?.closest?.('.page')) return;
+		return !!target?.closest?.('.page');
+	};
+	const selectedText = (): Selection | null => {
+		const selection = doc.getSelection();
+		return selection && !selection.isCollapsed ? selection : null;
+	};
+
+	const move = (e: TouchEvent) => {
+		const touch = e.touches?.[0];
+		if (tapStart && touch && Math.hypot(touch.clientX - tapStart.x, touch.clientY - tapStart.y) > TAP_SLOP_PX) {
+			tapStart = null;
+		}
+		if (!onPage(e) || !selectedText()) return;
 		e.stopPropagation();
 		stopped++;
 	};
-	// Diagnostics only (passive, never stops anything): what a finger does on
-	// a page in select mode, for "Copy PDF preview debug info".
-	const watch = (e: TouchEvent) => {
-		const doc = container.ownerDocument;
-		if (!doc.body.classList.contains(SELECT_MODE_CLASS)) return;
-		const target = e.target as HTMLElement | null;
-		if (!target?.closest?.('.page')) return;
-		const selection = doc.getSelection();
-		const selected = selection && !selection.isCollapsed ? selection.toString().length : 0;
-		const where = target.closest('.textLayer')
-			? 'text layer'
-			: `${target.tagName.toLowerCase()}.${Array.from(target.classList).join('.')}`;
+	const start = (e: TouchEvent) => {
+		const touch = e.touches?.[0];
+		tapStart =
+			onPage(e) && e.touches?.length === 1 && touch
+				? { x: touch.clientX, y: touch.clientY, time: Date.now() }
+				: null;
+	};
+	const end = (e: TouchEvent) => {
+		if (!onPage(e)) return;
+		const tap = tapStart;
+		tapStart = null;
+		const selection = selectedText();
+		const touch = e.changedTouches?.[0];
+		let outcome = '';
+		if (tap && touch && selection && Date.now() - tap.time <= TAP_MAX_MS) {
+			if (pointInSelection(selection, touch.clientX, touch.clientY)) {
+				outcome = ', tap on the selection: kept';
+			} else {
+				selection.removeAllRanges();
+				outcome = ', tap away from the selection: cleared';
+			}
+		}
 		debugNote(
-			`select mode ${e.type}: ${e.touches?.length ?? 0} finger(s) on ${where}, ${selected} chars selected, ${stopped} moves kept from Obsidian so far`,
+			`select mode touch ended: ${selection ? selection.toString().length : 0} chars were selected, ${stopped} moves kept from Obsidian so far${outcome}`,
 		);
 	};
-	container.addEventListener('touchmove', stop, { passive: true });
-	container.addEventListener('touchstart', watch, { passive: true });
-	container.addEventListener('touchend', watch, { passive: true });
+	container.addEventListener('touchmove', move, { passive: true });
+	container.addEventListener('touchstart', start, { passive: true });
+	container.addEventListener('touchend', end, { passive: true });
 	return () => {
-		container.removeEventListener('touchmove', stop);
-		container.removeEventListener('touchstart', watch);
-		container.removeEventListener('touchend', watch);
+		container.removeEventListener('touchmove', move);
+		container.removeEventListener('touchstart', start);
+		container.removeEventListener('touchend', end);
 	};
+}
+
+const TAP_SLOP_PX = 10;
+const TAP_MAX_MS = 350;
+
+/** True when (x, y) is on the selected text (with a little margin for fingers). */
+function pointInSelection(selection: Selection, x: number, y: number): boolean {
+	const margin = 8;
+	for (let i = 0; i < selection.rangeCount; i++) {
+		const rects = selection.getRangeAt(i).getClientRects();
+		for (let j = 0; j < rects.length; j++) {
+			const r = rects[j]!;
+			if (
+				x >= r.left - margin &&
+				x <= r.right + margin &&
+				y >= r.top - margin &&
+				y <= r.bottom + margin
+			) {
+				return true;
+			}
+		}
+	}
+	return false;
 }

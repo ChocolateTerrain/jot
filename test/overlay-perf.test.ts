@@ -240,3 +240,68 @@ describe('a 900-page PDF', () => {
 		vi.stubGlobal('IntersectionObserver', VisibleIntersectionObserver);
 	});
 });
+
+describe('select tool: tapping to deselect on iPad', () => {
+	function setupSelection() {
+		const { app, containerEl } = bigPdf(1);
+		const manager = new OverlayManager(app, new StrokeStore(), () => {});
+		manager.attachToActivePdf();
+		const word = containerEl.querySelector('.textLayer')!.appendChild(document.createElement('span'));
+		word.textContent = 'Notice that the unconditional';
+		document.body.classList.add('jot-select-mode');
+		document.getSelection()!.selectAllChildren(word);
+		const touch = (type: string, x: number, y: number, fingers = type === 'touchend' ? 0 : 1) => {
+			const point = { clientX: x, clientY: y };
+			const event = new Event(type, { bubbles: true });
+			Object.defineProperties(event, {
+				touches: { value: fingers ? [point] : [] },
+				changedTouches: { value: [point] },
+			});
+			word.dispatchEvent(event);
+		};
+		const cleanup = () => {
+			manager.detachAll();
+			document.getSelection()!.removeAllRanges();
+			document.body.classList.remove('jot-select-mode');
+		};
+		return { touch, cleanup };
+	}
+	const selected = () => document.getSelection()!.toString();
+
+	it('clears the selection on a quick tap away from it', () => {
+		const { touch, cleanup } = setupSelection();
+		vi.spyOn(Range.prototype, 'getClientRects').mockReturnValue([
+			{ left: 0, right: 200, top: 0, bottom: 20 },
+		] as unknown as DOMRectList);
+		touch('touchstart', 400, 300);
+		touch('touchend', 400, 300);
+		expect(selected()).toBe('');
+		cleanup();
+	});
+
+	it('keeps it when tapping on the selected text (for the Copy menu)', () => {
+		const { touch, cleanup } = setupSelection();
+		vi.spyOn(Range.prototype, 'getClientRects').mockReturnValue([
+			{ left: 0, right: 200, top: 0, bottom: 20 },
+		] as unknown as DOMRectList);
+		touch('touchstart', 100, 10);
+		touch('touchend', 100, 10);
+		expect(selected()).toBe('Notice that the unconditional');
+		cleanup();
+	});
+
+	it('keeps it after a drag or a long press', () => {
+		const { touch, cleanup } = setupSelection();
+		touch('touchstart', 400, 300);
+		touch('touchmove', 460, 300);
+		touch('touchend', 460, 300);
+		expect(selected()).not.toBe('');
+		vi.useFakeTimers();
+		touch('touchstart', 400, 300);
+		vi.advanceTimersByTime(600);
+		touch('touchend', 400, 300);
+		vi.useRealTimers();
+		expect(selected()).not.toBe('');
+		cleanup();
+	});
+});
