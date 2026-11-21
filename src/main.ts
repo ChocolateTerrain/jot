@@ -226,9 +226,19 @@ export default class JotPlugin extends Plugin {
 			this.syncDockedToolbar();
 		});
 
+		// Switching to a PDF tab that's already open doesn't always fire
+		// file-open, which left that tab without annotation layers.
+		this.registerEvent(this.app.workspace.on('active-leaf-change', () => void this.adoptActivePdf()));
+
 		// The PDF top bar can load after file-open or be rebuilt by Obsidian;
-		// re-check cheaply so the toolbar finds (and stays in) it.
-		this.registerInterval(window.setInterval(() => this.syncDockedToolbar(), 1000));
+		// re-check cheaply so the toolbar finds (and stays in) it. Also adopt
+		// the active PDF tab if every event about it was missed.
+		this.registerInterval(
+			window.setInterval(() => {
+				this.syncDockedToolbar();
+				void this.adoptActivePdf();
+			}, 1000),
+		);
 	}
 
 	onunload() {
@@ -276,6 +286,16 @@ export default class JotPlugin extends Plugin {
 	 * Load a PDF's annotations for an embed or preview, unless they're already
 	 * in memory: reloading would drop strokes whose save is still pending.
 	 */
+	/** Attach to the active PDF tab if not done yet (cheap when it is). */
+	private async adoptActivePdf(): Promise<void> {
+		const leaf = this.overlays.getActivePdfLeaf();
+		const filePath = this.overlays.getActivePdfFilePath();
+		if (!leaf || !filePath || this.overlays.isLeafManaged(leaf)) return;
+		await this.loadIfNeeded(filePath);
+		this.overlays.attachToActivePdf();
+		debugNote(`adopted PDF tab ${filePath}`);
+	}
+
 	private async loadIfNeeded(pdfPath: string): Promise<void> {
 		if (this.strokes.hasFor(pdfPath) || this.sidecar.hasPendingSave(pdfPath)) return;
 		await this.sidecar.load(pdfPath);

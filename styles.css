@@ -328,7 +328,11 @@
 	margin: 0 3px;
 }
 
-.jot-passthrough {
+/* While drawing, the PDF's text and link layers must not take the pencil.
+   With the select tool this rule steps aside entirely, so those layers keep
+   Obsidian's own settings: the link layer lets touches through to the text
+   (except on links), which iPad needs to start a text selection. */
+body:not(.jot-select-mode) .jot-passthrough {
 	pointer-events: none;
 }
 
@@ -609,14 +613,10 @@
 	}
 }
 
-/* Select tool: the drawing layer lets input through, and the PDF's own text
-   and link layers work again, so text can be selected and copied. */
+/* Select tool: the drawing layer lets input through, so the PDF's own text
+   and link layers work again and text can be selected and copied. */
 body.jot-select-mode .jot-overlay-canvas {
 	pointer-events: none;
-}
-
-body.jot-select-mode .jot-passthrough {
-	pointer-events: auto;
 }
 
 /* "Copy link" button next to a highlight. */

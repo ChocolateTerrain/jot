@@ -254,6 +254,11 @@ export class OverlayManager {
 	 * editable overlays). Everything else, such as hover previews and embeds,
 	 * is left to the read-only path.
 	 */
+	/** True when this manager already attached to the leaf's PDF view. */
+	isLeafManaged(leaf: WorkspaceLeaf): boolean {
+		return this.containerObservers.has(leaf);
+	}
+
 	isManaged(el: Element): boolean {
 		for (const leaf of this.containerObservers.keys()) {
 			if (leaf.view.containerEl.contains(el)) return true;
@@ -487,7 +492,9 @@ function guardSelectionSwipes(container: HTMLElement): () => void {
 		if (!target?.closest?.('.page')) return;
 		const selection = doc.getSelection();
 		const selected = selection && !selection.isCollapsed ? selection.toString().length : 0;
-		const where = target.closest('.textLayer') ? 'text layer' : target.tagName.toLowerCase();
+		const where = target.closest('.textLayer')
+			? 'text layer'
+			: `${target.tagName.toLowerCase()}.${Array.from(target.classList).join('.')}`;
 		debugNote(
 			`select mode ${e.type}: ${e.touches?.length ?? 0} finger(s) on ${where}, ${selected} chars selected, ${stopped} moves kept from Obsidian so far`,
 		);
