@@ -619,6 +619,22 @@ body.jot-select-mode .jot-overlay-canvas {
 	pointer-events: none;
 }
 
+/* Select tool: the text takes the mouse and finger whatever the viewer's own
+   styles say (desktop and iPad differ). The link layer above it only takes
+   input on the links themselves, so it never covers the text. */
+body.jot-select-mode .textLayer.jot-passthrough {
+	pointer-events: auto;
+}
+
+body.jot-select-mode .annotationLayer.jot-passthrough {
+	pointer-events: none;
+}
+
+body.jot-select-mode .annotationLayer.jot-passthrough section,
+body.jot-select-mode .annotationLayer.jot-passthrough a {
+	pointer-events: auto;
+}
+
 /* "Copy link" button next to a highlight. */
 .jot-link-chip {
 	position: fixed;

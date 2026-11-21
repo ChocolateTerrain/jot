@@ -521,10 +521,31 @@ function guardSelectionSwipes(container: HTMLElement): () => void {
 			`select mode touch ended: ${selection ? selection.toString().length : 0} chars were selected, ${stopped} moves kept from Obsidian so far${outcome}`,
 		);
 	};
+	// Diagnostics only: what a mouse press on a page hits in select mode, and
+	// whether something cancelled it (which stops text selection).
+	const press = (e: MouseEvent) => {
+		const target = e.target as HTMLElement | null;
+		if (!doc.body.classList.contains(SELECT_MODE_CLASS) || !target?.closest?.('.page')) return;
+		const view = doc.defaultView;
+		const layers = doc
+			.elementsFromPoint(e.clientX, e.clientY)
+			.slice(0, 4)
+			.map((el) => {
+				const style = view?.getComputedStyle(el);
+				return `${el.tagName.toLowerCase()}.${Array.from(el.classList).join('.')} (pointer-events ${style?.pointerEvents}, user-select ${style?.userSelect})`;
+			});
+		view?.setTimeout(() => {
+			debugNote(
+				`select mode mouse press${e.defaultPrevented ? ' CANCELLED by a handler' : ''}: ${layers.join(' > ')}`,
+			);
+		}, 0);
+	};
+	container.addEventListener('mousedown', press, { passive: true });
 	container.addEventListener('touchmove', move, { passive: true });
 	container.addEventListener('touchstart', start, { passive: true });
 	container.addEventListener('touchend', end, { passive: true });
 	return () => {
+		container.removeEventListener('mousedown', press);
 		container.removeEventListener('touchmove', move);
 		container.removeEventListener('touchstart', start);
 		container.removeEventListener('touchend', end);
