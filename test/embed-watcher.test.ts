@@ -147,3 +147,18 @@ describe("Obsidian's link tint over a highlight", () => {
 		expect(span.classList.contains('jot-tint-hidden')).toBe(false);
 	});
 });
+
+describe('preview debug info', () => {
+	it('reports decisions and where each page sits', async () => {
+		const { watcher } = setup();
+		const embed = document.body.appendChild(document.createElement('div'));
+		embed.className = 'internal-embed pdf-embed';
+		embed.setAttribute('src', 'Turbulent.pdf#page=205');
+		embed.appendChild(pdfPage(205));
+		await frame();
+		const report = watcher.debugReport();
+		expect(report).toContain('attached for Books/Turbulent.pdf');
+		expect(report).toContain('div.internal-embed.pdf-embed[src="Turbulent.pdf#page=205"]');
+		expect(report).toContain('page 205: overlay=jot-overlay-canvas jot-readonly');
+	});
+});

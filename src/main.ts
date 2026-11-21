@@ -85,6 +85,19 @@ export default class JotPlugin extends Plugin {
 		);
 		this.addSettingTab(new JotSettingTab(this.app, this));
 		this.addCommand({
+			id: 'copy-preview-debug-info',
+			name: 'Copy PDF preview debug info',
+			callback: async () => {
+				const report = this.embeds?.debugReport() ?? 'Not started';
+				try {
+					await navigator.clipboard.writeText(`Jot ${this.manifest.version}\n${report}`);
+					new Notice('Jot: debug info copied.');
+				} catch {
+					new Notice('Jot: could not copy the debug info.');
+				}
+			},
+		});
+		this.addCommand({
 			id: 'merge-notes-into-pdf',
 			name: 'Merge notes into PDF',
 			checkCallback: (checking) => {

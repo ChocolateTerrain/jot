@@ -461,13 +461,18 @@ function isElement(node: Node): node is Element {
  * unaffected. Returns a function that removes the guard.
  */
 function guardSelectionSwipes(container: HTMLElement): () => void {
+	// Only finger *movement*, and only while text is selected (i.e. while
+	// dragging a selection handle). Touch start and end must reach Obsidian:
+	// holding a finger on a word to select it depends on them.
 	const stop = (e: TouchEvent) => {
-		if (!container.ownerDocument.body.classList.contains(SELECT_MODE_CLASS)) return;
+		const doc = container.ownerDocument;
+		if (!doc.body.classList.contains(SELECT_MODE_CLASS)) return;
+		const selection = doc.getSelection();
+		if (!selection || selection.isCollapsed) return;
 		const target = e.target as HTMLElement | null;
 		if (!target?.closest?.('.page')) return;
 		e.stopPropagation();
 	};
-	const types = ['touchstart', 'touchmove', 'touchend'] as const;
-	types.forEach((type) => container.addEventListener(type, stop, { passive: true }));
-	return () => types.forEach((type) => container.removeEventListener(type, stop));
+	container.addEventListener('touchmove', stop, { passive: true });
+	return () => container.removeEventListener('touchmove', stop);
 }

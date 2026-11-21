@@ -20,6 +20,8 @@ export class EmbedWatcher {
 	private pendingTints = new Set<HTMLElement>();
 	private frame: number | null = null;
 	private lastHover: { linktext: string; sourcePath: string } | null = null;
+	/** Recent decisions, for "Copy PDF preview debug info". */
+	private log: string[] = [];
 
 	constructor(
 		private app: App,
@@ -51,6 +53,33 @@ export class EmbedWatcher {
 	/** Remember the link being hovered: a hover preview's PDF may not say which file it shows. */
 	noteHover(linktext: string, sourcePath: string): void {
 		this.lastHover = { linktext, sourcePath };
+		this.note(`hover-link "${linktext}" from "${sourcePath}"`);
+	}
+
+	private note(message: string): void {
+		this.log.push(`${new Date().toISOString().slice(11, 23)} ${message}`);
+		if (this.log.length > 60) this.log.shift();
+	}
+
+	/**
+	 * What the preview logic saw and decided, plus every PDF page currently in
+	 * the document with its surroundings. Pasted back by the user so the DOM
+	 * of their Obsidian version can be seen without guessing.
+	 */
+	debugReport(): string {
+		const lines = ['## Recent decisions', ...(this.log.length ? this.log : ['(none)']), '', '## PDF pages now in the document'];
+		const pages = Array.from(activeDocument.querySelectorAll<HTMLElement>('.page'));
+		lines.push(`${pages.length} page elements`);
+		// Pages in a PDF tab are usually many; show previews/embeds in full, tabs briefly.
+		pages.slice(0, 40).forEach((page) => {
+			const overlay = page.querySelector(OVERLAY_SELECTOR);
+			const tints = page.querySelectorAll(`.textLayer .${FOCUS_TINT}`).length;
+			lines.push(
+				`- page ${page.getAttribute('data-page-number') ?? '?'}: overlay=${overlay ? overlay.className + ' key=' + overlay.getAttribute(OVERLAY_KEY_ATTR) : 'none'}, tints=${tints}, inPopover=${!!page.closest('.popover')}, inPdfTab=${this.overlays.isInPdfTab(page)}, resolved=${this.resolvePdf(page) ?? 'none'}`,
+				`  ancestors: ${describeAncestors(page)}`,
+			);
+		});
+		return lines.join('\n');
 	}
 
 	/** Check a page for Obsidian link tints over our highlights (after drawing it). */
@@ -95,16 +124,25 @@ export class EmbedWatcher {
 
 	private async attach(page: HTMLElement): Promise<void> {
 		if (!page.isConnected || !page.hasAttribute('data-page-number')) return;
+		const inPopover = !!page.closest('.popover');
 		// Pages in a PDF tab are handled by OverlayManager.attachToActivePdf.
 		// A hover preview may host a PDF view of its own; that still counts as
 		// a preview.
-		if (!page.closest('.popover') && this.overlays.isInPdfTab(page)) return;
-		if (page.querySelector(OVERLAY_SELECTOR)) return;
+		if (!inPopover && this.overlays.isInPdfTab(page)) return;
+		const label = `page ${page.getAttribute('data-page-number')} (${inPopover ? 'preview' : 'embed'})`;
+		if (page.querySelector(OVERLAY_SELECTOR)) {
+			this.note(`${label}: already has an overlay`);
+			return;
+		}
 		const pdfPath = this.resolvePdf(page);
-		if (!pdfPath) return;
+		if (!pdfPath) {
+			this.note(`${label}: could not tell which PDF; ancestors: ${describeAncestors(page)}`);
+			return;
+		}
 		await this.loadIfNeeded(pdfPath);
 		if (!page.isConnected) return;
 		this.overlays.attachReadOnly(page, pdfPath);
+		this.note(`${label}: attached for ${pdfPath}, ${this.strokes.keysForPage(pdfPath).length} annotated pages loaded`);
 		this.checkTints(page);
 	}
 
@@ -133,7 +171,10 @@ export class EmbedWatcher {
 		if (!tint.isConnected || !tint.classList.contains(FOCUS_TINT) || !tint.closest('.textLayer')) return;
 		const overlay = tint.closest('.page')?.querySelector<HTMLCanvasElement>(OVERLAY_SELECTOR);
 		const key = overlay?.getAttribute(OVERLAY_KEY_ATTR);
-		if (!overlay || !key) return;
+		if (!overlay || !key) {
+			this.note('tint seen on a page without an overlay');
+			return;
+		}
 		const box = tint.getBoundingClientRect();
 		const x = box.left + box.width / 2;
 		const y = box.top + box.height / 2;
@@ -141,5 +182,21 @@ export class EmbedWatcher {
 			.forKey(key)
 			.some((stroke) => stroke.tool === 'highlighter' && hitsStroke(overlay, stroke, x, y, box.height / 2));
 		tint.classList.toggle(TINT_HIDDEN_CLASS, covered);
+		this.note(`tint on ${key}: ${covered ? 'over a highlight, hidden' : 'not over a highlight'}`);
 	}
+}
+
+/** "div.popover.hover-popover > div.pdf-embed[src=…] > …", nearest last. */
+function describeAncestors(el: HTMLElement): string {
+	const parts: string[] = [];
+	for (let node = el.parentElement; node && node !== el.ownerDocument.body && parts.length < 10; node = node.parentElement) {
+		let part = node.tagName.toLowerCase();
+		if (node.classList.length) part += '.' + Array.from(node.classList).join('.');
+		for (const attr of ['src', 'data-type']) {
+			const value = node.getAttribute(attr);
+			if (value) part += `[${attr}="${value.slice(0, 60)}"]`;
+		}
+		parts.unshift(part);
+	}
+	return parts.join(' > ');
 }

@@ -155,30 +155,47 @@ describe('erasing on a page full of ink', () => {
 });
 
 describe('select tool on iPad', () => {
-	it('keeps page touches from reaching the sidebar swipe gesture', () => {
+	it('stops sidebar swipes only while dragging a text selection on a page', () => {
 		const { app, containerEl } = bigPdf(1);
 		const manager = new OverlayManager(app, new StrokeStore(), () => {});
 		manager.attachToActivePdf();
-		const reachedApp = vi.fn();
-		document.addEventListener('touchstart', reachedApp);
-		const touchOn = (el: Element) => el.dispatchEvent(new Event('touchstart', { bubbles: true }));
+		const starts = vi.fn();
+		const moves = vi.fn();
+		document.addEventListener('touchstart', starts);
+		document.addEventListener('touchmove', moves);
+		const touch = (type: string, el: Element) => el.dispatchEvent(new Event(type, { bubbles: true }));
 		const text = containerEl.querySelector('.textLayer')!;
-
-		touchOn(text);
-		expect(reachedApp).toHaveBeenCalledTimes(1);
-
+		const word = text.appendChild(document.createElement('span'));
+		word.textContent = 'Notice';
 		document.body.classList.add('jot-select-mode');
-		touchOn(text);
-		expect(reachedApp).toHaveBeenCalledTimes(1);
-		// Outside the pages (e.g. the toolbar), swipes still work.
-		touchOn(containerEl);
-		expect(reachedApp).toHaveBeenCalledTimes(2);
 
-		manager.detachAll();
-		touchOn(text);
-		expect(reachedApp).toHaveBeenCalledTimes(3);
+		// Holding a finger on a word must reach Obsidian: that starts a selection.
+		touch('touchstart', word);
+		expect(starts).toHaveBeenCalledTimes(1);
+		// No selection yet: a sideways swipe still opens the sidebar.
+		touch('touchmove', word);
+		expect(moves).toHaveBeenCalledTimes(1);
+
+		// With text selected, dragging (a selection handle) stays with the PDF.
+		document.getSelection()!.selectAllChildren(word);
+		touch('touchmove', word);
+		expect(moves).toHaveBeenCalledTimes(1);
+		// Outside the pages (e.g. the toolbar) swipes still work.
+		touch('touchmove', containerEl);
+		expect(moves).toHaveBeenCalledTimes(2);
+
+		// Other tools, or after unloading: untouched.
 		document.body.classList.remove('jot-select-mode');
-		document.removeEventListener('touchstart', reachedApp);
+		touch('touchmove', word);
+		expect(moves).toHaveBeenCalledTimes(3);
+		document.body.classList.add('jot-select-mode');
+		manager.detachAll();
+		touch('touchmove', word);
+		expect(moves).toHaveBeenCalledTimes(4);
+		document.getSelection()!.removeAllRanges();
+		document.body.classList.remove('jot-select-mode');
+		document.removeEventListener('touchstart', starts);
+		document.removeEventListener('touchmove', moves);
 	});
 });
 
