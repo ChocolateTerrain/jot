@@ -10,7 +10,7 @@ import { collectClearOperations, countStrokes, toUndoEntries } from './clear-ops
 import { PointerEventHandler } from './pointer-event-handler';
 import { isSidecarPath, pdfPathFromSidecar } from './jot-file';
 import { MergeService } from './merge-service';
-import { OverlayManager } from './overlay-manager';
+import { OverlayManager, SELECT_MODE_CLASS } from './overlay-manager';
 import { SidecarStore } from './sidecar-store';
 import { StrokeStore } from './stroke-store';
 import { UndoController } from './undo-controller';
@@ -19,9 +19,6 @@ import { UndoEntry, UndoHistory } from './undo';
 export type { Handedness } from './palette';
 
 const PLUGIN_LOG = '[jot]';
-
-/** On <body> while the select tool is active. */
-const SELECT_MODE_CLASS = 'jot-select-mode';
 
 export default class JotPlugin extends Plugin {
 	private strokes = new StrokeStore();

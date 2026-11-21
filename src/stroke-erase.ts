@@ -2,6 +2,7 @@ import type { NormalizedPoint, Stroke } from './stroke-math';
 import { widthFactorForPressure } from './stroke-math';
 import { HIGHLIGHTER_WIDTH_FACTOR } from './stroke-render';
 import { roundPoint } from './stroke-compact';
+import { Bounds, boundsOf, grow, intersects } from './stroke-bounds';
 
 export interface PageSize {
 	width: number;
@@ -22,9 +23,17 @@ function halfThicknessPx(stroke: Stroke, page: PageSize): number {
 	return (stroke.width * widthFactorForPressure(avg) * page.height) / 2;
 }
 
+const pressureCache = new WeakMap<NormalizedPoint[], number>();
+
+/** Average pressure, cached per (never mutated) point array. */
 function averagePressure(points: NormalizedPoint[]): number {
 	if (points.length === 0) return 0.5;
-	return points.reduce((total, p) => total + p.pressure, 0) / points.length;
+	let avg = pressureCache.get(points);
+	if (avg === undefined) {
+		avg = points.reduce((total, p) => total + p.pressure, 0) / points.length;
+		pressureCache.set(points, avg);
+	}
+	return avg;
 }
 
 interface Px {
@@ -150,10 +159,20 @@ function circleCrossings(a: Px, b: Px, c: Px, r: number): [number | null, number
 	return [(-qb - root) / (2 * qa), (-qb + root) / (2 * qa)];
 }
 
+export interface EraseResult {
+	strokes: Stroke[];
+	/** Area (normalized) whose pixels may have changed, for a partial redraw. */
+	dirty: Bounds;
+}
+
 /**
- * Erase along the eraser's path from (fromX, fromY) to (toX, toY), sampling
- * often enough that a fast swipe doesn't skip over lines. Returns the new
- * stroke list, or null if nothing changed.
+ * Erase along the eraser's path from `from` to `to`, sampling often enough
+ * that a fast swipe doesn't skip over lines. Returns the new stroke list and
+ * the area that changed, or null if nothing changed.
+ *
+ * Strokes whose bounding box is nowhere near the path are passed through
+ * without any per-point work; on a page full of handwriting that is most of
+ * them.
  */
 export function eraseAlongPath(
 	strokes: Stroke[],
@@ -161,7 +180,7 @@ export function eraseAlongPath(
 	to: { x: number; y: number },
 	radiusPx: number,
 	page: PageSize,
-): Stroke[] | null {
+): EraseResult | null {
 	const samples: { x: number; y: number }[] = [];
 	if (from) {
 		const dx = (to.x - from.x) * page.width;
@@ -173,20 +192,54 @@ export function eraseAlongPath(
 	}
 	samples.push(to);
 
+	const start = from ?? to;
+	const rx = radiusPx / page.width;
+	const ry = radiusPx / page.height;
+	const path: Bounds = grow(
+		{
+			minX: Math.min(start.x, to.x),
+			minY: Math.min(start.y, to.y),
+			maxX: Math.max(start.x, to.x),
+			maxY: Math.max(start.y, to.y),
+		},
+		rx,
+		ry,
+	);
+
 	let changed = false;
-	let list = strokes;
-	for (const s of samples) {
-		const next: Stroke[] = [];
-		for (const stroke of list) {
-			const result = eraseCircleFromStroke(stroke, s.x, s.y, radiusPx, page);
-			if (result === null) {
-				next.push(stroke);
-			} else {
-				changed = true;
-				next.push(...result);
-			}
+	let maxHalf = 0;
+	const next: Stroke[] = [];
+	for (const stroke of strokes) {
+		const half = halfThicknessPx(stroke, page);
+		if (!intersects(grow(boundsOf(stroke.points), half / page.width, half / page.height), path)) {
+			next.push(stroke);
+			continue;
 		}
-		list = next;
+		// Near the path: run every sample over this stroke and its pieces.
+		let pieces: Stroke[] = [stroke];
+		let touched = false;
+		for (const s of samples) {
+			const after: Stroke[] = [];
+			for (const piece of pieces) {
+				const result = eraseCircleFromStroke(piece, s.x, s.y, radiusPx, page);
+				if (result === null) {
+					after.push(piece);
+				} else {
+					touched = true;
+					after.push(...result);
+				}
+			}
+			pieces = after;
+		}
+		if (touched) {
+			changed = true;
+			maxHalf = Math.max(maxHalf, half);
+		}
+		next.push(...pieces);
 	}
-	return changed ? list : null;
+	if (!changed) return null;
+	// Margin for line thickness, plus the curve smoothing of a cut piece, which
+	// can shift its line slightly up to one point-spacing beyond the cut.
+	const pad = maxHalf + 16;
+	return { strokes: next, dirty: grow(path, pad / page.width, pad / page.height) };
 }

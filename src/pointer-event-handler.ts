@@ -10,6 +10,7 @@ import { PenStrokeState } from './pen-stroke-state';
 import type { SidecarStore } from './sidecar-store';
 import type { NormalizedPoint, Stroke } from './stroke-math';
 import { eraseAlongPath, eraserRadiusFor } from './stroke-erase';
+import { Bounds, union } from './stroke-bounds';
 import { compactPoints, roundPoint } from './stroke-compact';
 import type { StrokeStore } from './stroke-store';
 import { straightenPoints } from './stroke-straighten';
@@ -64,6 +65,9 @@ export class PointerEventHandler {
 	 * page can't move mid-stroke because the pencil holds the pointer.
 	 */
 	private gestureRect: DOMRect | null = null;
+	/** Area erased since the last frame; redrawn once per frame, not per movement. */
+	private pendingDirty: Bounds | null = null;
+	private redrawFrame: number | null = null;
 
 	constructor(
 		private canvas: HTMLCanvasElement,
@@ -267,6 +271,7 @@ export class PointerEventHandler {
 		}
 		this.lastErase = null;
 		this.hideEraserCursor();
+		this.flushRedraw();
 		const snapshot = this.state.takeEraserSnapshot();
 		if (snapshot) this.deps.undo.push(snapshot);
 		this.state.reset();
@@ -348,11 +353,25 @@ export class PointerEventHandler {
 			height: rect.height,
 		});
 		if (!next) return false;
-		this.deps.strokes.setForKey(key, next);
-		this.deps.overlays.redrawPage(this.canvas);
+		this.deps.strokes.setForKey(key, next.strokes);
+		this.queueRedraw(next.dirty);
 		const pdfPath = pdfPathFromKey(key);
 		if (pdfPath) this.deps.sidecar.scheduleSave(pdfPath);
 		return true;
+	}
+
+	private queueRedraw(dirty: Bounds): void {
+		this.pendingDirty = union(this.pendingDirty, dirty);
+		if (this.redrawFrame !== null) return;
+		this.redrawFrame = window.requestAnimationFrame(() => this.flushRedraw());
+	}
+
+	private flushRedraw(): void {
+		if (this.redrawFrame !== null) window.cancelAnimationFrame(this.redrawFrame);
+		this.redrawFrame = null;
+		const dirty = this.pendingDirty;
+		this.pendingDirty = null;
+		if (dirty) this.deps.overlays.redrawPage(this.canvas, dirty);
 	}
 
 	private snapshotCurrent() {

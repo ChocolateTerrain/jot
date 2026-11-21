@@ -100,3 +100,82 @@ describe('OverlayManager with a large PDF', () => {
 		manager.detachAll();
 	});
 });
+
+describe('erasing on a page full of ink', () => {
+	function canvasWithMockContext() {
+		const ctx = {
+			setTransform: vi.fn(),
+			clearRect: vi.fn(),
+			save: vi.fn(),
+			restore: vi.fn(),
+			beginPath: vi.fn(),
+			rect: vi.fn(),
+			clip: vi.fn(),
+			moveTo: vi.fn(),
+			lineTo: vi.fn(),
+			stroke: vi.fn(),
+		};
+		const canvas = document.createElement('canvas');
+		canvas.width = 1200;
+		canvas.height = 1600;
+		// Fixture: the page's CSS size, which redrawPage reads back.
+		// eslint-disable-next-line obsidianmd/no-static-styles-assignment
+		canvas.setAttribute('style', 'width: 600px; height: 800px');
+		canvas.setAttribute('data-jot-key', 'big.pdf::1');
+		canvas.getContext = (() => ctx) as unknown as HTMLCanvasElement['getContext'];
+		return { canvas, ctx };
+	}
+
+	it('redraws only strokes near the erased area', () => {
+		const { app } = bigPdf(1);
+		const strokes = new StrokeStore();
+		const line = (y: number) => ({
+			tool: 'pen' as const,
+			color: '#000',
+			width: 0.0025,
+			points: [
+				{ x: 0.1, y, pressure: 0.5 },
+				{ x: 0.9, y, pressure: 0.5 },
+			],
+		});
+		for (let i = 0; i < 20; i++) strokes.appendToKey('big.pdf::1', line(0.04 + i * 0.045));
+		const manager = new OverlayManager(app, strokes, () => {});
+		const { canvas, ctx } = canvasWithMockContext();
+
+		manager.redrawPage(canvas, { minX: 0.4, minY: 0.03, maxX: 0.5, maxY: 0.05 });
+		expect(ctx.clip).toHaveBeenCalledOnce();
+		expect(ctx.stroke).toHaveBeenCalledTimes(1);
+
+		ctx.stroke.mockClear();
+		manager.redrawPage(canvas);
+		expect(ctx.stroke).toHaveBeenCalledTimes(20);
+	});
+});
+
+describe('select tool on iPad', () => {
+	it('keeps page touches from reaching the sidebar swipe gesture', () => {
+		const { app, containerEl } = bigPdf(1);
+		const manager = new OverlayManager(app, new StrokeStore(), () => {});
+		manager.attachToActivePdf();
+		const reachedApp = vi.fn();
+		document.addEventListener('touchstart', reachedApp);
+		const touchOn = (el: Element) => el.dispatchEvent(new Event('touchstart', { bubbles: true }));
+		const text = containerEl.querySelector('.textLayer')!;
+
+		touchOn(text);
+		expect(reachedApp).toHaveBeenCalledTimes(1);
+
+		document.body.classList.add('jot-select-mode');
+		touchOn(text);
+		expect(reachedApp).toHaveBeenCalledTimes(1);
+		// Outside the pages (e.g. the toolbar), swipes still work.
+		touchOn(containerEl);
+		expect(reachedApp).toHaveBeenCalledTimes(2);
+
+		manager.detachAll();
+		touchOn(text);
+		expect(reachedApp).toHaveBeenCalledTimes(3);
+		document.body.classList.remove('jot-select-mode');
+		document.removeEventListener('touchstart', reachedApp);
+	});
+});

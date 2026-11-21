@@ -7,6 +7,7 @@ import {
 } from './canvas-surface';
 import { pageKey } from './jot-file';
 import { drawStroke } from './stroke-render';
+import { Bounds, boundsOf, grow, intersects } from './stroke-bounds';
 import type { StrokeStore } from './stroke-store';
 
 // Up to 1.0.8, unloading left overlays and per-page observers behind, and
@@ -21,9 +22,12 @@ const PASSTHROUGH_CLASS = 'jot-passthrough';
 const IGNORED_LAYERS = '.textLayer, .annotationLayer';
 
 export const OVERLAY_KEY_ATTR = 'data-jot-key';
+/** On <body> while the select tool is active. */
+export const SELECT_MODE_CLASS = 'jot-select-mode';
 
 export class OverlayManager {
 	private containerObservers = new Map<WorkspaceLeaf, MutationObserver>();
+	private swipeGuards = new Map<WorkspaceLeaf, () => void>();
 	private pageObservers = new Set<MutationObserver | ResizeObserver | IntersectionObserver>();
 	private visiblePages = new WeakSet<HTMLElement>();
 	private visibilityObserver: IntersectionObserver | null = null;
@@ -45,6 +49,7 @@ export class OverlayManager {
 		const container = leaf.view.containerEl;
 
 		this.upgradePages(container, filePath);
+		if (!this.swipeGuards.has(leaf)) this.swipeGuards.set(leaf, guardSelectionSwipes(container));
 		if (this.containerObservers.has(leaf)) return;
 		// Large PDFs produce a constant stream of DOM changes while scrolling.
 		// Only look at pages that actually changed, at most once per frame.
@@ -70,13 +75,19 @@ export class OverlayManager {
 	}
 
 	pruneClosedObservers(): void {
-		if (this.containerObservers.size === 0) return;
+		if (this.containerObservers.size === 0 && this.swipeGuards.size === 0) return;
 		const live = new Set<WorkspaceLeaf>();
 		this.app.workspace.iterateAllLeaves((leaf) => live.add(leaf));
 		for (const [leaf, observer] of this.containerObservers) {
 			if (!live.has(leaf)) {
 				observer.disconnect();
 				this.containerObservers.delete(leaf);
+			}
+		}
+		for (const [leaf, remove] of this.swipeGuards) {
+			if (!live.has(leaf)) {
+				remove();
+				this.swipeGuards.delete(leaf);
 			}
 		}
 	}
@@ -90,6 +101,8 @@ export class OverlayManager {
 	detachAll(): void {
 		this.containerObservers.forEach((observer) => observer.disconnect());
 		this.containerObservers.clear();
+		this.swipeGuards.forEach((remove) => remove());
+		this.swipeGuards.clear();
 		this.pageObservers.forEach((observer) => observer.disconnect());
 		this.pageObservers.clear();
 		this.visibilityObserver = null;
@@ -108,18 +121,44 @@ export class OverlayManager {
 		});
 	}
 
-	redrawPage(canvas: HTMLCanvasElement): void {
+	/**
+	 * Redraw a page's annotations. With `dirty` (normalized page area), only
+	 * that area is cleared and only strokes reaching into it are drawn, which
+	 * keeps erasing smooth on pages full of ink.
+	 */
+	redrawPage(canvas: HTMLCanvasElement, dirty?: Bounds): void {
 		if (canvas.width === 0 || canvas.height === 0) return;
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return;
 		const surface = readCanvasSurface(canvas);
 		ctx.setTransform(surface.dpr, 0, 0, surface.dpr, 0, 0);
-		ctx.clearRect(0, 0, surface.width, surface.height);
 		const key = canvas.getAttribute(OVERLAY_KEY_ATTR);
-		if (!key) return;
-		for (const stroke of this.strokes.forKey(key)) {
-			drawStroke(ctx, stroke, surface);
+		if (!dirty) {
+			ctx.clearRect(0, 0, surface.width, surface.height);
+			if (!key) return;
+			for (const stroke of this.strokes.forKey(key)) drawStroke(ctx, stroke, surface);
+			return;
 		}
+		// Whole device pixels, so the clipped edge doesn't leave seams.
+		const x = Math.floor(Math.max(0, dirty.minX) * surface.width * surface.dpr) / surface.dpr;
+		const y = Math.floor(Math.max(0, dirty.minY) * surface.height * surface.dpr) / surface.dpr;
+		const right = Math.ceil(Math.min(1, dirty.maxX) * surface.width * surface.dpr) / surface.dpr;
+		const bottom = Math.ceil(Math.min(1, dirty.maxY) * surface.height * surface.dpr) / surface.dpr;
+		if (right <= x || bottom <= y) return;
+		ctx.save();
+		ctx.beginPath();
+		ctx.rect(x, y, right - x, bottom - y);
+		ctx.clip();
+		ctx.clearRect(x, y, right - x, bottom - y);
+		if (key) {
+			for (const stroke of this.strokes.forKey(key)) {
+				// Generous margin: the widest a stroke can draw (highlighter, 4x).
+				const margin = stroke.width * 4 * surface.height;
+				const reach = grow(boundsOf(stroke.points), margin / surface.width, margin / surface.height);
+				if (intersects(reach, dirty)) drawStroke(ctx, stroke, surface);
+			}
+		}
+		ctx.restore();
 	}
 
 	redrawOverlaysForActivePdf(): void {
@@ -340,4 +379,23 @@ function collectAffectedPages(mutation: MutationRecord, pages: Set<HTMLElement>)
 /** Cross-window safe (popout windows have their own Element class). */
 function isElement(node: Node): node is Element {
 	return node.nodeType === 1;
+}
+
+/**
+ * With the select tool, a finger drag on a PDF page (e.g. moving a text
+ * selection handle) is for the PDF. Obsidian on iPad would take a sideways
+ * drag as "swipe to open a sidebar", so stop page touches from bubbling up to
+ * it. They still reach the page itself; scrolling and selecting are native and
+ * unaffected. Returns a function that removes the guard.
+ */
+function guardSelectionSwipes(container: HTMLElement): () => void {
+	const stop = (e: TouchEvent) => {
+		if (!container.ownerDocument.body.classList.contains(SELECT_MODE_CLASS)) return;
+		const target = e.target as HTMLElement | null;
+		if (!target?.closest?.('.page')) return;
+		e.stopPropagation();
+	};
+	const types = ['touchstart', 'touchmove', 'touchend'] as const;
+	types.forEach((type) => container.addEventListener(type, stop, { passive: true }));
+	return () => types.forEach((type) => container.removeEventListener(type, stop));
 }

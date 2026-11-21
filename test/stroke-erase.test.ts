@@ -80,7 +80,7 @@ describe('eraseAlongPath', () => {
 	it('catches a line crossed by a fast swipe between two samples', () => {
 		const stroke = line();
 		const next = eraseAlongPath([stroke], { x: 0.5, y: 0.1 }, { x: 0.5, y: 0.9 }, 5, page)!;
-		expect(next).toHaveLength(2);
+		expect(next.strokes).toHaveLength(2);
 	});
 
 	it('returns null and leaves strokes alone when nothing is touched', () => {
@@ -175,5 +175,45 @@ describe('PointerEventHandler partial eraser', () => {
 		pen('pointerdown', 500, 500);
 		pen('pointerup', 500, 500);
 		expect(strokes.forKey('doc.pdf::1')).toHaveLength(2);
+	});
+});
+
+describe('eraser redraws', () => {
+	it('redraws once per frame with just the erased area, and finishes on pen up', () => {
+		const frames: FrameRequestCallback[] = [];
+		vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => frames.push(cb));
+		vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+		const strokes = new StrokeStore();
+		strokes.appendToKey('doc.pdf::1', line());
+		const redrawPage = vi.fn();
+		const deps = {
+			palette: { isOpen: () => false, show: vi.fn() },
+			strokes,
+			overlays: { redrawPage },
+			sidecar: { scheduleSave: vi.fn() },
+			undo: { push: vi.fn() },
+			toolState: () => ({ tool: 'eraser', color: '#000000', width: 0.0025 }),
+			handedness: () => 'right',
+			penHold: () => ({ enabled: false, durationMs: 300 }),
+		} as unknown as PointerEventHandlerDeps;
+		const canvas = document.body.appendChild(document.createElement('canvas'));
+		canvas.setAttribute('data-jot-key', 'doc.pdf::1');
+		canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 1000 }) as DOMRect;
+		new PointerEventHandler(canvas, {} as CanvasRenderingContext2D, deps).attach();
+		const pen = (type: string, x: number) =>
+			canvas.dispatchEvent(
+				new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 6, pointerType: 'pen', clientX: x, clientY: 500, buttons: 1, pressure: 0.5 }),
+			);
+		pen('pointerdown', 150);
+		for (let x = 160; x <= 400; x += 10) pen('pointermove', x);
+		// Many movements, no redraw yet: one is queued for the next frame.
+		expect(redrawPage).not.toHaveBeenCalled();
+		expect(frames).toHaveLength(1);
+		pen('pointerup', 400);
+		expect(redrawPage).toHaveBeenCalledTimes(1);
+		const dirty = redrawPage.mock.calls[0]![1] as { minX: number; maxX: number; minY: number; maxY: number };
+		expect(dirty.minX).toBeGreaterThan(0.1);
+		expect(dirty.maxX).toBeLessThan(0.5);
+		expect(dirty.maxY - dirty.minY).toBeLessThan(0.1);
 	});
 });
