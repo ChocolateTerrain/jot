@@ -8,6 +8,7 @@ import {
 import { pageKey } from './jot-file';
 import { drawStroke } from './stroke-render';
 import { Bounds, boundsOf, grow, intersects } from './stroke-bounds';
+import { debugNote } from './debug-log';
 import type { StrokeStore } from './stroke-store';
 
 // Up to 1.0.8, unloading left overlays and per-page observers behind, and
@@ -248,15 +249,16 @@ export class OverlayManager {
 		return found;
 	}
 
-	/** True when `el` is inside a PDF tab of the workspace (not a preview). */
-	isInPdfTab(el: Element): boolean {
-		let found = false;
-		this.app.workspace.iterateAllLeaves((leaf) => {
-			if (!found && leaf.view.getViewType?.() === 'pdf' && leaf.view.containerEl.contains(el)) {
-				found = true;
-			}
-		});
-		return found;
+	/**
+	 * True when `el` is in a PDF tab this manager attached to (and so gets
+	 * editable overlays). Everything else, such as hover previews and embeds,
+	 * is left to the read-only path.
+	 */
+	isManaged(el: Element): boolean {
+		for (const leaf of this.containerObservers.keys()) {
+			if (leaf.view.containerEl.contains(el)) return true;
+		}
+		return false;
 	}
 
 	private ensureOverlayOnPage(page: HTMLElement, filePath: string, readOnly = false): void {
@@ -276,7 +278,8 @@ export class OverlayManager {
 		page.querySelector(LEGACY_OVERLAY_SELECTOR)?.remove();
 		const existing = page.querySelector<HTMLCanvasElement>(`canvas.${OVERLAY_CLASS}`);
 		if (existing) {
-			if (existing.getAttribute(OVERLAY_KEY_ATTR) === key) {
+			const modeMatches = existing.classList.contains(READONLY_CLASS) === readOnly;
+			if (existing.getAttribute(OVERLAY_KEY_ATTR) === key && modeMatches) {
 				// Already in place: its resize and visibility observers keep it
 				// sized and drawn, so skip the (expensive) layout reads here.
 				if (host.contains(existing)) return;
@@ -464,6 +467,7 @@ function guardSelectionSwipes(container: HTMLElement): () => void {
 	// Only finger *movement*, and only while text is selected (i.e. while
 	// dragging a selection handle). Touch start and end must reach Obsidian:
 	// holding a finger on a word to select it depends on them.
+	let stopped = 0;
 	const stop = (e: TouchEvent) => {
 		const doc = container.ownerDocument;
 		if (!doc.body.classList.contains(SELECT_MODE_CLASS)) return;
@@ -472,7 +476,28 @@ function guardSelectionSwipes(container: HTMLElement): () => void {
 		const target = e.target as HTMLElement | null;
 		if (!target?.closest?.('.page')) return;
 		e.stopPropagation();
+		stopped++;
+	};
+	// Diagnostics only (passive, never stops anything): what a finger does on
+	// a page in select mode, for "Copy PDF preview debug info".
+	const watch = (e: TouchEvent) => {
+		const doc = container.ownerDocument;
+		if (!doc.body.classList.contains(SELECT_MODE_CLASS)) return;
+		const target = e.target as HTMLElement | null;
+		if (!target?.closest?.('.page')) return;
+		const selection = doc.getSelection();
+		const selected = selection && !selection.isCollapsed ? selection.toString().length : 0;
+		const where = target.closest('.textLayer') ? 'text layer' : target.tagName.toLowerCase();
+		debugNote(
+			`select mode ${e.type}: ${e.touches?.length ?? 0} finger(s) on ${where}, ${selected} chars selected, ${stopped} moves kept from Obsidian so far`,
+		);
 	};
 	container.addEventListener('touchmove', stop, { passive: true });
-	return () => container.removeEventListener('touchmove', stop);
+	container.addEventListener('touchstart', watch, { passive: true });
+	container.addEventListener('touchend', watch, { passive: true });
+	return () => {
+		container.removeEventListener('touchmove', stop);
+		container.removeEventListener('touchstart', watch);
+		container.removeEventListener('touchend', watch);
+	};
 }

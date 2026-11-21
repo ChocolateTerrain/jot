@@ -3,6 +3,7 @@ import { DEFAULT_TOOL_STATE, Palette, ToolState } from './palette';
 import { DockedToolbar } from './docked-toolbar';
 import { HighlightLinkController } from './highlight-link-controller';
 import { EmbedWatcher } from './embed-watcher';
+import { debugNote } from './debug-log';
 import { DEFAULT_SETTINGS, JotSettings, JotSettingTab } from './settings';
 import { DEFAULT_TOOL_SIZES, SizeSettingsHost, sanitizeToolSizes } from './settings-sizes';
 import { clampPenHoldMs } from './pen-hold';
@@ -129,6 +130,7 @@ export default class JotPlugin extends Plugin {
 				this.settings.eraserWidth = mem.eraserWidth;
 				void this.saveSettings();
 				this.applyToolMode();
+				debugNote(`tool: ${state.tool}`);
 				this.dockedToolbar?.refresh();
 			},
 			{
@@ -161,6 +163,14 @@ export default class JotPlugin extends Plugin {
 			() => this.toolState.tool,
 		);
 		this.registerDomEvent(activeDocument, 'click', (e) => this.highlightLinks?.onClick(e));
+		let hadSelection = false;
+		this.registerDomEvent(activeDocument, 'selectionchange', () => {
+			if (this.toolState.tool !== 'select') return;
+			const length = activeDocument.getSelection()?.toString().length ?? 0;
+			if ((length > 0) === hadSelection) return;
+			hadSelection = length > 0;
+			debugNote(hadSelection ? `select mode: text selected (${length} chars)` : 'select mode: selection cleared');
+		});
 
 		this.embeds = new EmbedWatcher(this.app, this.overlays, this.strokes, (pdfPath) =>
 			this.loadIfNeeded(pdfPath),

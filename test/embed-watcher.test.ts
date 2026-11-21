@@ -25,10 +25,13 @@ const frame = async () => {
 	await new Promise((r) => window.setTimeout(r, 0));
 };
 
-const tabs: { view: { getViewType: () => string; containerEl: HTMLElement; file?: unknown } }[] = [];
+type FakeLeaf = { view: { getViewType: () => string; containerEl: HTMLElement; file?: unknown } };
+const tabs: FakeLeaf[] = [];
+let mostRecent: FakeLeaf | null = null;
 
 function setup() {
 	tabs.length = 0;
+	mostRecent = null;
 	const strokes = new StrokeStore();
 	strokes.appendToKey('Books/Turbulent.pdf::205', {
 		tool: 'highlighter',
@@ -41,7 +44,7 @@ function setup() {
 	});
 	const app = {
 		workspace: {
-			getMostRecentLeaf: () => null,
+			getMostRecentLeaf: () => mostRecent,
 			iterateAllLeaves: (cb: (leaf: unknown) => void) => tabs.forEach(cb),
 		},
 		metadataCache: {
@@ -55,7 +58,7 @@ function setup() {
 	const loadIfNeeded = vi.fn(async () => {});
 	watcher = new EmbedWatcher(app, overlays, strokes, loadIfNeeded);
 	watcher.start(document);
-	return { watcher, loadIfNeeded };
+	return { watcher, loadIfNeeded, overlays };
 }
 
 function pdfPage(pageNumber: number): HTMLElement {
@@ -91,15 +94,49 @@ describe('annotations in embeds and hover previews', () => {
 		expect(popover.querySelector('canvas.jot-readonly')).not.toBeNull();
 	});
 
-	it('leaves pages in PDF tabs to the main overlay logic', async () => {
-		setup();
+	it('leaves the managed PDF tab to the main overlay logic (editable overlays)', async () => {
+		const { overlays } = setup();
 		const tab = document.body.appendChild(document.createElement('div'));
-		tabs.push({ view: { getViewType: () => 'pdf', containerEl: tab } });
-		const embed = tab.appendChild(document.createElement('div'));
-		embed.setAttribute('src', 'Turbulent.pdf');
-		embed.appendChild(pdfPage(1));
+		const leaf: FakeLeaf = {
+			view: { getViewType: () => 'pdf', containerEl: tab, file: { path: 'Books/Turbulent.pdf', extension: 'pdf' } },
+		};
+		tabs.push(leaf);
+		mostRecent = leaf;
+		tab.appendChild(pdfPage(1));
+		overlays.attachToActivePdf();
 		await frame();
-		expect(tab.querySelector('canvas')).toBeNull();
+		const overlay = tab.querySelector('canvas.jot-overlay-canvas');
+		expect(overlay).not.toBeNull();
+		expect(overlay?.classList.contains('jot-readonly')).toBe(false);
+	});
+
+	it('shows a not-yet-active PDF tab read-only, then makes it editable when it becomes active', async () => {
+		const { overlays } = setup();
+		const tab = document.body.appendChild(document.createElement('div'));
+		const leaf: FakeLeaf = {
+			view: { getViewType: () => 'pdf', containerEl: tab, file: { path: 'Books/Turbulent.pdf', extension: 'pdf' } },
+		};
+		tabs.push(leaf);
+		tab.appendChild(pdfPage(205));
+		await frame();
+		expect(tab.querySelector('canvas.jot-readonly')).not.toBeNull();
+		mostRecent = leaf;
+		overlays.attachToActivePdf();
+		expect(tab.querySelector('canvas.jot-readonly')).toBeNull();
+		expect(tab.querySelectorAll('canvas.jot-overlay-canvas')).toHaveLength(1);
+	});
+
+	it('finds preview pages it missed by scanning after a hover', async () => {
+		const { watcher } = setup();
+		watcher.stop();
+		const popover = document.body.appendChild(document.createElement('div'));
+		popover.className = 'popover hover-popover';
+		popover.appendChild(pdfPage(205));
+		watcher.noteHover('Turbulent#page=205', 'Notes/IAHR.md');
+		await new Promise((r) => window.setTimeout(r, 350));
+		await frame();
+		expect(popover.querySelector('canvas.jot-readonly')).not.toBeNull();
+		expect(watcher.debugReport()).toContain('1 pages outside the managed PDF tab');
 	});
 
 	it('treats a PDF view inside a hover preview as a preview, using its file', async () => {
@@ -157,8 +194,9 @@ describe('preview debug info', () => {
 		embed.appendChild(pdfPage(205));
 		await frame();
 		const report = watcher.debugReport();
-		expect(report).toContain('attached for Books/Turbulent.pdf');
+		expect(report).toContain('read-only overlay for Books/Turbulent.pdf');
 		expect(report).toContain('div.internal-embed.pdf-embed[src="Turbulent.pdf#page=205"]');
 		expect(report).toContain('page 205: overlay=jot-overlay-canvas jot-readonly');
+		expect(report).toContain('Watcher: running');
 	});
 });
